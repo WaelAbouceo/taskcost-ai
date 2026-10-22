@@ -217,3 +217,10 @@ def test_mock_run_then_results(client):
 
     attempts = client.get(f"/api/results/{run_name}/attempts", params={"task_id": "T1", "model": "mock-frontier"}).json()
     assert attempts and all(a["task_id"] == "T1" and a["model"] == "mock-frontier" for a in attempts)
+
+
+def test_page_files_are_versioned_and_revalidated(client):
+    page = client.get("/")
+    assert page.headers["cache-control"] == "no-cache"
+    assert "/static/app.js?v=" in page.text and "/static/style.css?v=" in page.text
+    assert client.get("/static/app.js").headers["cache-control"] == "no-cache"

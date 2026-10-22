@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -130,6 +130,15 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
         yield
 
     app = FastAPI(title="TaskCost AI", lifespan=lifespan)
+
+    @app.middleware("http")
+    async def revalidate_pages(request: Any, call_next: Any) -> Any:
+        """Browsers must check the page and its files for updates on every visit (cheap, with ETags), so an
+        old cached script never runs against a newer page."""
+        response = await call_next(request)
+        if request.url.path == "/" or request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
     plans_dir = root / "plans"
     uploads_dir = root / "uploads"
     jobs: dict[str, Job] = {}
@@ -183,16 +192,35 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
     def documents_key(documents: dict[str, Path]) -> list[str]:
         return sorted(hashlib.sha256(p.read_bytes()).hexdigest() for p in documents.values())
 
+    async def fetch_catalog() -> dict[str, ModelInfo]:
+        client = client_from_env()
+        if client is None:
+            return {}
+        async with aclosing(client):
+            models = await client.list_models()
+        catalog_cache["models"] = (time.time(), models)
+        return models
+
     async def catalog() -> dict[str, ModelInfo]:
-        """SovereignEG's model list, refreshed hourly so new models and price changes show up without a restart."""
+        """SovereignEG's model list. Fetched once; after an hour it is refreshed in the background while the
+        last copy keeps serving, so pages never wait on SovereignEG."""
         fetched_at, models = catalog_cache.get("models", (0.0, {}))
-        if not models or time.time() - fetched_at > CATALOG_TTL_S:
-            client = client_from_env()
-            if client is None:
-                return models
-            async with aclosing(client):
-                models = await client.list_models()
-            catalog_cache["models"] = (time.time(), models)
+        if not models:
+            return await fetch_catalog()
+        if time.time() - fetched_at > CATALOG_TTL_S and "refreshing" not in catalog_cache:
+            catalog_cache["refreshing"] = (time.time(), {})
+
+            async def refresh() -> None:
+                try:
+                    await fetch_catalog()
+                except Exception as exc:  # keep serving the last copy
+                    print(f"Catalog refresh failed: {exc}")
+                finally:
+                    catalog_cache.pop("refreshing", None)
+
+            task = asyncio.create_task(refresh())
+            running.add(task)
+            task.add_done_callback(running.discard)
         return models
 
     def start(kind: str, work: Callable[[Job], Awaitable[str]]) -> Job:
@@ -238,8 +266,17 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
         return documents
 
     @app.get("/")
-    async def index() -> FileResponse:
-        return FileResponse(WEB_DIR / "index.html")
+    async def index() -> HTMLResponse:
+        """The page, with each script and stylesheet address stamped with a hash of its contents, so a changed
+        file always has a new address."""
+        html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+
+        def stamp(match: re.Match[str]) -> str:
+            path = WEB_DIR / match.group(1)
+            version = hashlib.sha256(path.read_bytes()).hexdigest()[:10] if path.is_file() else "0"
+            return f"/static/{match.group(1)}?v={version}"
+
+        return HTMLResponse(re.sub(r"/static/([\w.-]+\.(?:js|css))", stamp, html))
 
     @app.get("/api/config")
     async def get_config() -> dict[str, Any]:

@@ -132,7 +132,18 @@ function liveSteps(kind, phase, extra = "") {
 
 // ---------- routing ----------
 
+// A page cached before an update can load new scripts but miss newer ones; reload it from the server, once.
+function pageIsStale() {
+  const missing = ["renderHosting", "renderInsights"].some((fn) => typeof window[fn] !== "function");
+  if (!missing || sessionStorage.getItem("taskcost.reloaded")) return false;
+  sessionStorage.setItem("taskcost.reloaded", "1");
+  location.replace(`/?fresh=${Date.now()}${location.hash}`);
+  return true;
+}
+
 async function route() {
+  if (pageIsStale()) return;
+  sessionStorage.removeItem("taskcost.reloaded");
   const [, view, name] = location.hash.split("/");
   const section = view === "plan" ? "plans" : ["compare", "blueprint"].includes(view) ? "home" : view || "home";
   document.querySelectorAll("[data-nav]").forEach((a) => a.classList.toggle("active", a.dataset.nav === section));
