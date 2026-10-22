@@ -260,8 +260,11 @@ async def _cmd_recommend(args: argparse.Namespace) -> int:
     from .recommender import recommend, recommend_hybrid, rule_pick
     from .registry import USE_CASES, best_model
 
+    from .sovereignty import residency_ranks
+
     config = load_config(args.config)
     cards, results = _registry_from_runs(config, args.runs)
+    residency = residency_ranks(config, cards)
     print("Model registry (from measured runs):")
     for card in cards.values():
         print(f"  {card.id:18} {card.describe()}")
@@ -284,7 +287,7 @@ async def _cmd_recommend(args: argparse.Namespace) -> int:
         recs = await asyncio.gather(*(recommend(decider, jev, t.prompt, u, cards) for t, u in jobs))
         hybrid = await asyncio.gather(*(recommend_hybrid(decider, jev, t.prompt, u, cards, config.escalate_at,
                                                          config.prefer_open_weights, config.min_model_pass_rate,
-                                                         config.prefer_egypt_hosted)
+                                                         residency)
                                         for t, u in jobs))
     finally:
         await client.aclose()
@@ -303,7 +306,7 @@ async def _cmd_recommend(args: argparse.Namespace) -> int:
             return False
         if config.prefer_open_weights and cards[truth].open_weights and not cards[pick].open_weights:
             return False
-        if config.prefer_egypt_hosted and cards[truth].egypt_hosted and not cards[pick].egypt_hosted:
+        if residency and residency.get(pick, 9) > residency.get(truth, 9):
             return False
         pick_cost, best_cost = entry["cost"] / entry["runs"], best["cost"] / best["runs"]
         return pick_cost <= max(1.25 * best_cost, best_cost + 0.005)
@@ -311,8 +314,8 @@ async def _cmd_recommend(args: argparse.Namespace) -> int:
     score = {"jev": 0, "hybrid": 0, "rule": 0}
     print(f"\n{'task':24} {'use case':9} {'right answer':15} {'Jev picks':18} {'code + Jev check':22} {'code only'}")
     for (task, use_case), rec, hyb in zip(jobs, recs, hybrid):
-        truth = best_model(task.id, use_case, cards, results, config.prefer_open_weights, config.prefer_egypt_hosted)
-        rule = rule_pick(cards, use_case, prefer_egypt=config.prefer_egypt_hosted)
+        truth = best_model(task.id, use_case, cards, results, config.prefer_open_weights, residency)
+        rule = rule_pick(cards, use_case, residency=residency)
         oks = {"jev": good(rec.model, truth, task.id, use_case), "hybrid": good(hyb.model, truth, task.id, use_case),
                "rule": good(rule, truth, task.id, use_case)}
         for key, ok in oks.items():
@@ -327,6 +330,28 @@ async def _cmd_recommend(args: argparse.Namespace) -> int:
     cost = sum(r.cost_egp for r in recs) + sum(r.cost_egp for r in hybrid)
     print(f"Jev cost {cost:.4f} EGP for {2 * total} decisions "
           f"({decider.hits} answered from the cache, {decider.misses} asked fresh).")
+    return 0
+
+
+async def _cmd_hosting(args: argparse.Namespace) -> int:
+    """Run the hosting agent now: where every provider and model runs, with the quotes that prove it."""
+    from .hosting import refresh_hosting
+
+    config = load_config(args.config)
+    client = _client(180)
+    try:
+        snapshot = await refresh_hosting(client, config.hosting_model or config.profiler_model or "")
+    finally:
+        await client.aclose()
+    for provider in snapshot["providers"].values():
+        print(f"\n{provider['name']}: {provider['status']}, runs in {', '.join(provider.get('locations') or ['unknown'])}"
+              + (" (forwards requests to other companies)" if provider.get("routes_onward") else ""))
+        for fact in provider.get("facts", [])[:3]:
+            print(f"  {fact['location']}: \"{fact['quote'][:160]}\"  ({fact['url']})")
+    models = snapshot["models"].values()
+    print(f"\n{sum(r['egypt_hosted'] for r in models)} models hosted in Egypt; "
+          f"{sum(r['verified'] for r in models)} of {len(snapshot['models'])} models have a verified location.")
+    print("Changes: " + (" ".join(snapshot["changes"]) or "none") + f"  Cost {snapshot['cost_egp']:.4f} EGP.")
     return 0
 
 
@@ -432,6 +457,10 @@ def main(argv: list[str] | None = None) -> int:
     cache_cmd.add_argument("action", choices=["clear"])
     cache_cmd.add_argument("--config", default="benchmark.yaml")
     cache_cmd.set_defaults(handler=_cmd_cache)
+
+    hosting = sub.add_parser("hosting", help="Run the hosting agent: where each provider and model runs (normally daily)")
+    hosting.add_argument("--config", default="benchmark.yaml")
+    hosting.set_defaults(handler=_cmd_hosting)
 
     ui = sub.add_parser("ui", help="Start the web interface")
     ui.add_argument("--config", default="benchmark.yaml")

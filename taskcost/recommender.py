@@ -119,18 +119,19 @@ async def recommend_hybrid(
     escalate_at: float = ESCALATE_AT,
     prefer_open: bool = True,
     min_pass_rate: float = 0.0,
-    prefer_egypt: bool = False,
+    residency: dict[str, int] | None = None,
 ) -> Recommendation:
-    """Code ranks fast-enough, reliable models (open-source and Egypt-hosted first, then cheapest); Jev only judges
-    whether the task needs a stronger one, in which case the most reliable model of the preferred kind is used."""
-    fitting = rank_candidates(cards, use_case, prefer_open, min_pass_rate, prefer_egypt)
+    """Code ranks fast-enough, reliable models (closest to the user and open-source first, then cheapest); Agent 1
+    only judges whether the task needs a stronger one, in which case the most reliable model of the preferred
+    kind is used. `residency` ranks models by location (sovereignty.residency_ranks); None ignores location."""
+    fitting = rank_candidates(cards, use_case, prefer_open, min_pass_rate, residency)
     task = task_text if len(task_text) <= MAX_TASK_CHARS else task_text[:MAX_TASK_CHARS] + "\n[...]"
     decision = await backend.decide(jev, {"task": task}, HARDNESS_QUESTION)
     hard = float((decision.answers.get("needs_stronger") or {}).get("noul", 0.0))
-    best_kind = preference(fitting[0], prefer_open, prefer_egypt) if fitting else None
-    preferred = [c for c in fitting if preference(c, prefer_open, prefer_egypt) == best_kind]
+    best_kind = preference(fitting[0], prefer_open, residency) if fitting else None
+    preferred = [c for c in fitting if preference(c, prefer_open, residency) == best_kind]
     top = preferred[0] if preferred else None
-    kind = ("Egypt-hosted " if prefer_egypt and top and top.egypt_hosted else "") + (
+    kind = ("locally hosted " if residency and top and residency.get(top.id) == 0 else "") + (
         "open-source " if prefer_open and top and top.open_weights else "")
     if not fitting:
         chosen, note = None, "No reliable model in the registry is fast enough for this use case."
@@ -144,8 +145,8 @@ async def recommend_hybrid(
         chosen, note = preferred[0].id, f"Agent 1 judged a small model will do (p={hard:.2f}): the cheapest reliable {kind}model."
     if chosen and prefer_open and not cards[chosen].open_weights:
         note += " No open-source model is fast and reliable enough here, so a proprietary model is the fallback."
-    elif chosen and prefer_egypt and not cards[chosen].egypt_hosted and any(c.egypt_hosted for c in cards.values()):
-        note += " No Egypt-hosted model is fast and reliable enough here, so this open-source model runs abroad."
+    elif chosen and residency and residency.get(chosen, 9) > 0 and any(r == 0 for r in residency.values()):
+        note += " No model hosted in your country is fast and reliable enough here, so this one runs outside it."
     return Recommendation(
         use_case=use_case,
         model=chosen,
@@ -162,8 +163,8 @@ async def recommend_hybrid(
 
 
 def rule_pick(cards: dict[str, ModelCard], use_case: str, min_pass_rate: float = 0.85, prefer_open: bool = True,
-              prefer_egypt: bool = False) -> str | None:
-    """Baseline without Jev: the first fast-enough model with a good pass record (open-source and Egypt-hosted
-    first, then cheapest)."""
-    ranked = rank_candidates(cards, use_case, prefer_open, min_pass_rate, prefer_egypt)
+              residency: dict[str, int] | None = None) -> str | None:
+    """Baseline without Agent 1's judgement: the first fast-enough model with a good pass record (closest to the
+    user and open-source first, then cheapest)."""
+    ranked = rank_candidates(cards, use_case, prefer_open, min_pass_rate, residency)
     return ranked[0].id if ranked else None

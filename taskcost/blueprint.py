@@ -28,6 +28,7 @@ from .naming import slug, unique_dir
 from .plan import TASK_TYPES
 from .recommender import recommend_hybrid
 from .registry import USE_CASES, ModelCard, rank_candidates
+from .sovereignty import accepted, residency_ranks
 from .runner import FatalRunError, first_error, load_attempts, run_job
 from .tasks import Task
 
@@ -202,7 +203,7 @@ def _clean(data: Any) -> dict[str, Any]:
 
 async def estimate_blueprint(
     blueprint: dict[str, Any], backend: Backend, jev: ModelInfo, cards: dict[str, ModelCard], escalate_at: float,
-    prefer_open: bool = True, min_pass_rate: float = 0.0, prefer_egypt: bool = False,
+    prefer_open: bool = True, min_pass_rate: float = 0.0, residency: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """Pick a model for every AI step (Agent 1, all steps at once) and estimate monthly cost from measured prices."""
     if not cards:
@@ -210,7 +211,7 @@ async def estimate_blueprint(
     steps = ai_steps(blueprint)
     recommendations = await asyncio.gather(*(
         recommend_hybrid(backend, jev, f"{step['instruction']}\n\nThe result must: " + "; ".join(step.get("criteria", [])),
-                         step["use_case"], cards, escalate_at, prefer_open, min_pass_rate, prefer_egypt)
+                         step["use_case"], cards, escalate_at, prefer_open, min_pass_rate, residency)
         for step in steps
     ))
     for step, rec in zip(steps, recommendations):
@@ -405,8 +406,8 @@ async def verify_blueprint(
                     return
                 candidates = [
                     c for c in rank_candidates(cards, step["use_case"], config.prefer_open_weights,
-                                               config.min_model_pass_rate, config.prefer_egypt_hosted)
-                    if c.id in catalog and (include_frontier or c.tier != "Frontier")
+                                               config.min_model_pass_rate, residency_ranks(config, cards))
+                    if c.id in catalog and accepted(config, c.id) and (include_frontier or c.tier != "Frontier")
                 ]
                 for card in candidates:
                     spec = ModelSpec(id=card.id, label=card.id, temperature=config.default_temperature)

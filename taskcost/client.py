@@ -66,6 +66,7 @@ class ModelInfo:
     weights_type: str | None = None  # "open_weights" or "proprietary", as published in SovereignEG's catalog
     owned_by: str | None = None
     source: str | None = None  # "sovereign" = served from SovereignEG's own GPUs in Egypt; "serverless" = upstream
+    engines: tuple[str, ...] = ()  # the providers SovereignEG may route this model to
 
     @classmethod
     def from_catalog(cls, entry: dict[str, Any]) -> ModelInfo:
@@ -86,6 +87,7 @@ class ModelInfo:
             weights_type=entry.get("weights_type"),
             owned_by=entry.get("owned_by"),
             source=entry.get("source"),
+            engines=tuple(entry.get("engines") or ()),
         )
 
 

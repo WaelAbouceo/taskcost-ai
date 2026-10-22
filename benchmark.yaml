@@ -31,13 +31,24 @@ helper_modes:
     blueprint_model: claude-sonnet-5.5
     sample_model: deepseek-v4-pro
 
-# Model policy: prefer open-source (open-weight) models, and among those the ones SovereignEG hosts in Egypt
-# (catalog `source: sovereign`). Next come open models served abroad, then proprietary ones (OpenAI, Claude,
-# Gemini…) only when no open model is fast and reliable enough. Models that passed less than
-# min_model_pass_rate of the task library are never recommended.
+# Model policy: models closest to the user first (when sovereignty is not "open"), then open-source
+# (open-weight) before proprietary ones (OpenAI, Claude, Gemini…), then the cheapest. Models that passed
+# less than min_model_pass_rate of the task library are never recommended.
 prefer_open_weights: true
-prefer_egypt_hosted: true
 min_model_pass_rate: 0.85
+
+# Sovereignty defaults; the web page sends the user's detected country and chosen level instead.
+#   open:          location doesn't matter
+#   prefer_local:  in the user's country first, then places their law allows, their region, anywhere
+#   strict:        only the user's country or places their law allows, for helpers and reviewers too
+# Countries and their laws: knowledge/jurisdictions.yaml. Where models run: the hosting agent.
+country: EG
+sovereignty: prefer_local
+
+# Hosting agent: checks daily where every provider and model runs (knowledge/hosting_sources.yaml) and
+# accepts only locations it can quote from the providers' own pages. Run it now with `taskcost hosting`.
+hosting_model: SovereignEG/Qwen3.8-27B-FP8   # hosted in Egypt, so provider pages are read locally
+hosting_refresh_hours: 24
 
 # Quick compare (the home page): the models every task is tested on. Egypt-hosted open source first; one
 # proprietary model is kept as the fallback and as a reference. Measured on the task library

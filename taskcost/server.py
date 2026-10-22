@@ -12,7 +12,7 @@ import itertools
 import json
 import re
 import time
-from contextlib import aclosing
+from contextlib import aclosing, asynccontextmanager
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -37,7 +37,9 @@ from .licenses import is_egypt_hosted, is_open_weights
 from .naming import slug
 from .plan import Plan, read_document
 from .quick import quick_compare, quick_summary
+from .hosting import load_snapshot, refresh_hosting, snapshot_age_hours
 from .registry import USE_CASES, registry_from_results
+from .sovereignty import LEVELS, accepted, apply_policy, countries, country_name, model_fit, residency_ranks
 from .report import finalize_run
 from .runner import load_attempts
 
@@ -45,6 +47,7 @@ WEB_DIR = Path(__file__).parent / "web"
 SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
 DOCUMENT_TYPES = {".txt", ".md", ".pdf"}
 CATALOG_TTL_S = 3600
+HOSTING_CHECK_S = 3600
 
 
 @dataclass
@@ -113,7 +116,15 @@ def _criteria_from_lines(lines: list[str]) -> list[Any]:
 
 
 def create_app(root: Path, config_path: Path) -> FastAPI:
-    app = FastAPI(title="TaskCost AI")
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        if load_api_key():
+            task = asyncio.create_task(hosting_loop())
+            running.add(task)
+            task.add_done_callback(running.discard)
+        yield
+
+    app = FastAPI(title="TaskCost AI", lifespan=lifespan)
     plans_dir = root / "plans"
     uploads_dir = root / "uploads"
     jobs: dict[str, Job] = {}
@@ -122,14 +133,22 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
     catalog_cache: dict[str, tuple[float, dict[str, ModelInfo]]] = {}
     cache = Cache(load_config(config_path).cache_path)
 
-    def config(helpers: str = ""):
-        cfg = load_config(config_path)
-        if not helpers or helpers == cfg.helper_mode:
-            return cfg
+    def config():
+        return load_config(config_path)
+
+    def policy_config(helpers: str = "", country: str = "", sovereignty: str = ""):
+        """The config for one request: the user's country and sovereignty level, with helper models and
+        reviewers chosen to respect them (sovereignty.apply_policy)."""
+        cfg = config()
+        cfg = replace(cfg, country=(country or cfg.country).upper(), sovereignty=sovereignty or cfg.sovereignty)
         try:
-            return cfg.with_helper_mode(helpers)
+            return apply_policy(cfg, helpers)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from None
+
+    def policy_key(cfg) -> dict[str, Any]:
+        return {"helpers": cfg.helper_mode, "country": cfg.country, "sovereignty": cfg.sovereignty,
+                "judges": list(cfg.judge_models)}
 
     def checked(name: str) -> str:
         if not SAFE_NAME.match(name):
@@ -229,7 +248,15 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
             "tiers": [{"tier": tier, "model": model, "open_weights": is_open_weights(model),
                        "egypt_hosted": is_egypt_hosted(model)} for tier, model in cfg.tiers],
             "prefer_open_weights": cfg.prefer_open_weights,
-            "prefer_egypt_hosted": cfg.prefer_egypt_hosted,
+            "country": cfg.country,
+            "sovereignty": cfg.sovereignty,
+            "levels": [{"id": k, "label": v} for k, v in LEVELS.items()],
+            "countries": [{"code": code, "name": c["name"], "region": c["region"], "law": c["law"]}
+                          for code, c in sorted(countries().items(), key=lambda item: item[1]["name"])],
+            "hosting_updated_at": (load_snapshot() or {}).get("updated_at"),
+            # How each default model fits every covered country, so the page can label them for the user's choice.
+            "tier_fit": {model: {code: model_fit(model, code)["fit"] for code in countries()} for _, model in cfg.tiers},
+            "tier_locations": {model: model_fit(model, cfg.country)["locations"] for _, model in cfg.tiers},
             "helper_mode": cfg.helper_mode,
             "helper_modes": [{
                 "id": m.id, "label": m.label, "description": m.description, "models": m.models,
@@ -289,8 +316,10 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
         samples: list[str] = Form(default=[]),
         files: list[UploadFile] = File(default=[]),
         helpers: str = Form(default=""),
+        country: str = Form(default=""),
+        sovereignty: str = Form(default=""),
     ) -> dict[str, Any]:
-        cfg = config(helpers)
+        cfg = policy_config(helpers, country, sovereignty)
         if not request.strip():
             raise HTTPException(400, "Describe the work you need done.")
         if not cfg.design_model:
@@ -351,8 +380,10 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
         samples: list[str] = Form(default=[]),
         files: list[UploadFile] = File(default=[]),
         helpers: str = Form(default=""),
+        country: str = Form(default=""),
+        sovereignty: str = Form(default=""),
     ) -> dict[str, Any]:
-        cfg = config(helpers)
+        cfg = policy_config(helpers, country, sovereignty)
         chosen = parse_request(task, use_case, tiers)
         documents = await collect_documents(samples, files)
         return launch_quick(cfg, task, chosen, trials, use_case, documents, force, rerun_of)
@@ -365,10 +396,12 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
         use_case: str = Form(default="auto"),
         files: list[UploadFile] = File(default=[]),
         helpers: str = Form(default=""),
+        country: str = Form(default=""),
+        sovereignty: str = Form(default=""),
     ) -> dict[str, Any]:
         """The Compare button: Agent 1 sizes the request and, unless the user chose one, decides the use case;
         then it goes to the simple or the blueprint flow (where each AI step has its own use case)."""
-        cfg = config(helpers)
+        cfg = policy_config(helpers, country, sovereignty)
         auto = use_case in ("", "auto")
         chosen = parse_request(task, DEFAULT_USE_CASE if auto else use_case, tiers)
         documents = await collect_documents([], files)
@@ -388,7 +421,7 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
             return {"kind": "simple", "size": size,
                     **launch_quick(cfg, task, chosen, trials, use_case, documents, False, "", guess)}
 
-        cache_parts = {"task": " ".join(task.split()).lower(), "documents": documents_key(documents), "helpers": cfg.helper_mode}
+        cache_parts = {"task": " ".join(task.split()).lower(), "documents": documents_key(documents), **policy_key(cfg)}
         hit = cache.get("blueprint", cache_parts, cfg.cache_comparisons_hours * 3600)
         if hit and (cfg.output_path / hit[0] / "blueprint.json").is_file():
             return {"kind": "blueprint", "size": size, "status": "cached", "result": hit[0]}
@@ -407,12 +440,15 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
                 blueprint = await design_blueprint(decider, models[designer_id], task.strip(), texts)
                 blueprint["size"] = size
                 blueprint["helper_mode"] = cfg.helper_mode
+                blueprint["sovereignty"] = {"country": cfg.country, "level": cfg.sovereignty,
+                                            "notes": list(cfg.sovereignty_notes)}
                 job.phase = "estimate"
                 job.write("Choosing a model for each AI step and estimating the monthly cost...")
                 cards, _ = registry_from_results(cfg.output_path)
+                cards = {m: c for m, c in cards.items() if accepted(cfg, m)}
                 blueprint = await estimate_blueprint(blueprint, decider, jev, cards, cfg.escalate_at,
                                                      cfg.prefer_open_weights, cfg.min_model_pass_rate,
-                                                     cfg.prefer_egypt_hosted)
+                                                     residency_ranks(cfg, cards))
             name = save_blueprint(blueprint, cfg.output_path)
             cache.put("blueprint", cache_parts, name)
             job.phase = "done"
@@ -433,18 +469,24 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
                   for m in [s.get("model"), (s.get("measured") or {}).get("model"), *[t["model"] for t in s.get("tried", [])]] if m}
         models.add(blueprint.get("strongest_model") or "")
         mode = next((m for m in config().helper_modes if m.id == blueprint.get("helper_mode")), None)
+        policy = blueprint.get("sovereignty") or {"country": config().country, "level": config().sovereignty, "notes": []}
+        residency = {m: model_fit(m, policy["country"]) for m in models if m}
         return {"name": name, **blueprint, "open_weights": {m: is_open_weights(m) for m in models if m},
-                "egypt_hosted": {m: is_egypt_hosted(m) for m in models if m},
+                "egypt_hosted": {m: is_egypt_hosted(m) for m in models if m}, "residency": residency,
+                "sovereignty": {**policy, "country_name": country_name(policy["country"]),
+                                "level_label": LEVELS.get(policy["level"], policy["level"])},
                 "helpers": mode and {"label": mode.label, "models": sorted(set(mode.models.values())),
-                                     "egypt_hosted": all(is_egypt_hosted(m) for m in mode.models.values())}}
+                                     "local": all(model_fit(m, policy["country"])["rank"] <= 1 for m in mode.models.values())}}
 
     @app.post("/api/blueprints/{name}/verify")
     async def verify(name: str, steps: str = "", helpers: str = "") -> dict[str, Any]:
-        """Measure AI steps on a realistic example, cheapest model first (all steps, or the comma-separated ids)."""
+        """Measure AI steps on a realistic example, cheapest model first (all steps, or the comma-separated ids).
+        Uses the country, level and helpers the blueprint was made with."""
         only = {s for s in steps.split(",") if s} or None
         folder = blueprint_folder(name)
         blueprint = load_blueprint(folder)
-        cfg = config(helpers or blueprint.get("helper_mode") or "")
+        policy = blueprint.get("sovereignty") or {}
+        cfg = policy_config(helpers or blueprint.get("helper_mode") or "", policy.get("country", ""), policy.get("level", ""))
         models = await catalog()
         needed = [cfg.sample_model or cfg.blueprint_model or cfg.design_model, *cfg.judge_models]
         if any(m not in models for m in needed):
@@ -532,7 +574,7 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
             "trials": trials,
             "use_case": use_case,
             "documents": documents_key(documents),
-            "helpers": cfg.helper_mode,
+            **policy_key(cfg),
         }
         if not force:
             hit = cache.get("comparison", cache_parts, cfg.cache_comparisons_hours * 3600)
@@ -613,6 +655,41 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
             r for r in records
             if (task_id is None or r["task_id"] == task_id) and (model is None or r["model"] == model)
         ]
+
+    @app.get("/api/hosting")
+    async def get_hosting() -> dict[str, Any]:
+        """The hosting agent's latest snapshot: providers with their verified locations and quotes, and changes."""
+        snapshot = load_snapshot()
+        if not snapshot:
+            return {"updated_at": None, "providers": {}, "changes": [], "model_count": 0}
+        models = snapshot["models"].values()
+        return {
+            "updated_at": snapshot["updated_at"], "reader_model": snapshot.get("reader_model"),
+            "providers": snapshot["providers"], "changes": snapshot.get("changes", []),
+            "model_count": len(snapshot["models"]),
+            "egypt_hosted": sorted(m for m, r in snapshot["models"].items() if r["egypt_hosted"]),
+            "verified_models": sum(1 for r in models if r["verified"]), "cost_egp": snapshot.get("cost_egp"),
+        }
+
+    async def run_hosting_agent() -> None:
+        cfg = config()
+        reader = cfg.hosting_model or cfg.profiler_model
+        client = client_from_env(timeout_s=180)
+        if client is None or not reader:
+            return
+        async with aclosing(client):
+            await refresh_hosting(client, reader)
+
+    async def hosting_loop() -> None:
+        """The hosting agent runs daily (hosting_refresh_hours) while the server is up."""
+        while True:
+            age = snapshot_age_hours()
+            if age is None or age >= config().hosting_refresh_hours:
+                try:
+                    await run_hosting_agent()
+                except Exception as exc:  # keep serving with the last snapshot
+                    print(f"Hosting agent failed: {exc}")
+            await asyncio.sleep(HOSTING_CHECK_S)
 
     app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
     return app

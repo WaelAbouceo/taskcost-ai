@@ -62,7 +62,11 @@ class BenchmarkConfig:
     sample_model: str | None = None
     escalate_at: float = 0.5
     prefer_open_weights: bool = True
-    prefer_egypt_hosted: bool = False
+    country: str = "EG"               # the user's country (ISO code); the web page sends the detected one
+    sovereignty: str = "prefer_local"  # open, prefer_local or strict (see sovereignty.py)
+    sovereignty_notes: tuple[str, ...] = ()
+    hosting_model: str | None = None  # reads provider pages for the daily hosting agent
+    hosting_refresh_hours: float = 24.0
     min_model_pass_rate: float = 0.85
     cache_decisions_hours: float = 24.0
     cache_comparisons_hours: float = 24.0
@@ -110,7 +114,9 @@ class BenchmarkConfig:
             "design_model": self.design_model,
             "test_mode": self.test_mode,
             "prefer_open_weights": self.prefer_open_weights,
-            "prefer_egypt_hosted": self.prefer_egypt_hosted,
+            "country": self.country,
+            "sovereignty": self.sovereignty,
+            "sovereignty_notes": list(self.sovereignty_notes),
             "helper_mode": self.helper_mode,
             "helpers": {name: getattr(self, name) for name in HELPER_FIELDS},
             "min_success_rate": self.min_success_rate,
@@ -147,7 +153,10 @@ def load_config(path: str | Path) -> BenchmarkConfig:
         sample_model=data.get("sample_model"),
         escalate_at=float(data.get("escalate_at", 0.5)),
         prefer_open_weights=bool(data.get("prefer_open_weights", True)),
-        prefer_egypt_hosted=bool(data.get("prefer_egypt_hosted", False)),
+        country=str(data.get("country", "EG")).upper(),
+        sovereignty=str(data.get("sovereignty", "prefer_local")),
+        hosting_model=data.get("hosting_model"),
+        hosting_refresh_hours=float(data.get("hosting_refresh_hours", 24)),
         min_model_pass_rate=float(data.get("min_model_pass_rate", 0.85)),
         cache_decisions_hours=float((data.get("cache") or {}).get("decisions_hours", 24)),
         cache_comparisons_hours=float((data.get("cache") or {}).get("comparisons_hours", 24)),

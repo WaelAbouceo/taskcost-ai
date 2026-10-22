@@ -24,20 +24,23 @@ function perAnswer(step) {
 }
 
 let openWeights = {};
-let egyptHosted = {};
+let residency = {};
+let policy = null;
+const placeBadge = (model) => (!policy || policy.level === "open" || !residency[model] ? ""
+  : residencyBadge(residency[model].fit, residency[model].locations, policy.country_name));
 
 function modelCell(s) {
   const tried = s.tried?.length ? `<div class="hint">tried ${esc(s.tried.map((t) => `${t.model} ${t.passed}/${t.runs}`).join(", "))}</div>` : "";
   if (s.measured) {
     const m = s.measured;
-    return `${esc(m.model)} <span class="badge good">Measured</span> ${sourceBadge(openWeights[m.model], egyptHosted[m.model])}
+    return `${esc(m.model)} <span class="badge good">Measured</span> ${sourceBadge(openWeights[m.model])} ${placeBadge(m.model)}
       <div class="hint">${esc(m.tier)}${m.latency_s == null ? "" : ` · ${m.latency_s.toFixed(1)} s`}${s.sample?.source === "user" ? " · your example" : ""}</div>`;
   }
   if (UNRESOLVED[s.verdict]) {
     const [cls, label, why] = UNRESOLVED[s.verdict];
     return `<span class="badge ${cls}">${label}</span><div class="hint">${why}</div>${tried}`;
   }
-  return `${esc(s.model || "none fast enough")} <span class="badge muted">Estimate</span> ${s.model ? sourceBadge(openWeights[s.model], egyptHosted[s.model]) : ""}${s.model_tier ? `<div class="hint">${esc(s.model_tier)}</div>` : ""}`;
+  return `${esc(s.model || "none fast enough")} <span class="badge muted">Estimate</span> ${s.model ? sourceBadge(openWeights[s.model]) + ' ' + placeBadge(s.model) : ""}${s.model_tier ? `<div class="hint">${esc(s.model_tier)}</div>` : ""}`;
 }
 
 function watchJob(job, box, fallbackTotal, onDone, onError) {
@@ -70,7 +73,8 @@ async function startMeasuring(name, stepIds, button, box, total, onDone) {
 async function renderBlueprint(name) {
   const b = await api(`/api/blueprints/${encodeURIComponent(name)}`);
   openWeights = b.open_weights || {};
-  egyptHosted = b.egypt_hosted || {};
+  residency = b.residency || {};
+  policy = b.sovereignty || null;
   const registry = b.estimate?.registry || {};
   const strongest = registry[b.strongest_model];
   const strongestPer = strongest ? strongest.cost_per_answer_egp / Math.max(strongest.pass_rate, 0.5) : 0;
@@ -153,7 +157,8 @@ async function renderBlueprint(name) {
       <p class="hint">Measured costs come from realistic examples, cheapest model first; estimates use each model's average cost.
         Long real documents cost more than short examples. Costs cover AI model use only, not integration or hosting.
         Mapping this project cost ${egp(b.design?.cost_egp)} EGP.
-        ${b.helpers ? `Your request was analysed ${b.helpers.egypt_hosted ? "in Egypt" : "with the global helpers"} (${esc(b.helpers.models.join(", "))}); re-measuring uses the same helpers.` : ""}</p>
+        ${b.helpers ? `Your request was analysed ${b.helpers.local ? `in ${esc(policy?.country_name || "your country")}` : "outside your country"} (${esc(b.helpers.models.join(", "))}); re-measuring uses the same helpers.` : ""}
+        ${policy ? `Sovereignty: ${esc(policy.level_label)} · ${esc(policy.country_name)}. ${(policy.notes || []).map(esc).join(" ")}` : ""}</p>
       <a href="#/"><button type="button" class="big-button">Compare another task</button></a>
     </section>`;
 

@@ -67,25 +67,29 @@ EGYPT_CARDS = {
 }
 
 
-def test_egypt_hosted_open_source_first_then_open_abroad_then_proprietary():
+# Location ranks as sovereignty.residency_ranks gives them for a user in Egypt (0 = in the country).
+EGYPT_RANKS = {"egypt": 0, "open-small": 3, "open-weak": 3, "open-strong": 4, "closed-fast": 3}
+
+
+def test_local_open_source_first_then_open_abroad_then_proprietary():
     easy = FakeJev({"needs_stronger": {"noul": 0.1}})
-    batch = asyncio.run(recommend_hybrid(easy, JEV, "t", "batch", EGYPT_CARDS, min_pass_rate=0.85, prefer_egypt=True))
-    assert batch.model == "egypt" and "Egypt-hosted open-source" in batch.note  # beats cheaper open models abroad
+    batch = asyncio.run(recommend_hybrid(easy, JEV, "t", "batch", EGYPT_CARDS, min_pass_rate=0.85, residency=EGYPT_RANKS))
+    assert batch.model == "egypt" and "locally hosted open-source" in batch.note  # beats cheaper models abroad
     hard = asyncio.run(recommend_hybrid(FakeJev({"needs_stronger": {"noul": 0.9}}), JEV, "t", "batch", EGYPT_CARDS,
-                                        min_pass_rate=0.85, prefer_egypt=True))
+                                        min_pass_rate=0.85, residency=EGYPT_RANKS))
     assert hard.model == "egypt"  # the most reliable model among the preferred kind
-    chat = asyncio.run(recommend_hybrid(easy, JEV, "t", "chat", EGYPT_CARDS, min_pass_rate=0.85, prefer_egypt=True))
-    assert chat.model == "closed-fast"  # nothing open is fast enough for a chatbot
+    chat = asyncio.run(recommend_hybrid(easy, JEV, "t", "chat", EGYPT_CARDS, min_pass_rate=0.85, residency=EGYPT_RANKS))
+    assert chat.model == "closed-fast"  # nothing local or open is fast enough for a chatbot
     off = asyncio.run(recommend_hybrid(easy, JEV, "t", "batch", EGYPT_CARDS, min_pass_rate=0.85))
-    assert off.model == "open-small"
-    assert rule_pick(EGYPT_CARDS, "realtime", prefer_egypt=True) == "egypt"
+    assert off.model == "open-small"  # location ignored: the cheapest reliable open model
+    assert rule_pick(EGYPT_CARDS, "realtime", residency=EGYPT_RANKS) == "egypt"
 
 
-def test_abroad_note_when_the_egypt_hosted_model_is_too_slow():
+def test_note_when_the_local_model_is_not_good_enough():
     rec = asyncio.run(recommend_hybrid(FakeJev({"needs_stronger": {"noul": 0.1}}), JEV, "t", "batch",
                                        {**EGYPT_CARDS, "egypt": replace(EGYPT_CARDS["egypt"], pass_rate=0.5)},
-                                       min_pass_rate=0.85, prefer_egypt=True))
-    assert rec.model == "open-small" and "runs abroad" in rec.note
+                                       min_pass_rate=0.85, residency=EGYPT_RANKS))
+    assert rec.model == "open-small" and "runs outside it" in rec.note
 
 
 def test_egypt_hosting_comes_from_the_catalog_source(monkeypatch, tmp_path):

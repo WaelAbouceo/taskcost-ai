@@ -23,6 +23,35 @@ uv run taskcost ui            # then open http://127.0.0.1:8000
 
 The interface is a small FastAPI server (`taskcost/server.py`) and one plain HTML/CSS/JavaScript page (`taskcost/web/`), with no build step.
 
+## Sovereignty: where your data goes
+
+The home page detects the user's country from the browser (time zone, then language; nothing is sent to a
+lookup service) and offers three levels:
+
+- **Open**: location doesn't matter; the cheapest correct model wins.
+- **Prefer local**: models hosted in the user's country first, then places their law allows, then their
+  region, then anywhere. Every fallback is explained on the result.
+- **Strict**: only the user's country or places their law allows, for the compared models, the helper models
+  that read the request, and the reviewers. Models outside are skipped before anything is sent; if nothing
+  qualifies, the request is refused.
+
+Countries, their data laws and what Strict accepts are in `knowledge/jurisdictions.yaml` (a simplification,
+not legal advice). Logic: `taskcost/sovereignty.py`.
+
+**The hosting agent** (`taskcost/hosting.py`) decides where each model runs, daily while the server is up
+(`hosting_refresh_hours`) or now with `uv run taskcost hosting`:
+
+1. SovereignEG's model list: `source: sovereign` models run on its own GPUs in Egypt; every other model's
+   `engines` name the providers SovereignEG may route it to.
+2. Each provider's official pages (`knowledge/hosting_sources.yaml`) are fetched, and a model hosted in Egypt
+   reads the passages about locations. It must quote the page for every location.
+3. A location is kept only if its quote appears word for word on the page and names the place. Otherwise the
+   last verified record is kept, or the provider is marked unverified. Unchanged pages are not re-read.
+
+Results are in the app under **Where models run**, with every quote and its source link. Providers that forward
+requests to companies they don't name (OpenRouter) make a model's location unverified, which Strict treats as
+outside.
+
 ## How it works: from real work to simple tasks
 
 The **simple task** is the unit of economics: one clear job with one answer, done in one AI call and checkable on its own.

@@ -36,11 +36,7 @@ async function renderHome() {
       <p class="lead">Describe a task, a workflow or a whole system. For a task, we test it on ${cfg.tiers.length} models and
         tell you the cheapest one that does it right, fast enough for how you'll use it (we work that out from your words).
         For a workflow or system, we map how it runs and what the AI part costs per month.
-        ${cfg.prefer_open_weights
-          ? cfg.prefer_egypt_hosted
-            ? "Open-source models hosted in Egypt come first; proprietary ones are the fallback."
-            : "Open-source models come first; proprietary ones are the fallback."
-          : ""}</p>
+        You choose how close to home your data must stay.</p>
       </div>
       ${cfg.has_key ? "" : `<div class="notice bad">LLM_API_KEY is not set, so comparisons can't run.</div>`}
       <form id="quick">
@@ -49,7 +45,7 @@ async function renderHome() {
           ${EXAMPLES.map(([label, text]) => `<button type="button" class="link" data-example="${esc(text)}">${esc(label)}</button>`).join(" · ")}
         </div>
 
-        ${helperSwitch(cfg)}
+        ${sovereigntyPicker(cfg)}
 
         <button type="submit" class="big-button" ${cfg.has_key ? "" : "disabled"}>Compare</button>
         <div id="quick-progress"></div>
@@ -60,7 +56,8 @@ async function renderHome() {
           <input type="file" name="files" multiple accept=".txt,.md,.pdf">
           <label class="field">Models <span class="hint">clear a box to skip that model</span></label>
           <div class="tiers">
-            ${cfg.tiers.map((t) => `<label class="tier-pick"><span>${esc(t.tier)} ${sourceBadge(t.open_weights, t.egypt_hosted)}</span>
+            ${cfg.tiers.map((t) => `<label class="tier-pick"><span>${esc(t.tier)} ${sourceBadge(t.open_weights)}
+              <span data-fit="${esc(t.model)}"></span></span>
               <input type="text" class="tier-model" data-tier="${esc(t.tier)}" value="${esc(t.model)}" list="catalog"></label>`).join("")}
           </div>
           <datalist id="catalog">${cfg.catalog.map((id) => `<option value="${esc(id)}">`).join("")}</datalist>
@@ -76,16 +73,20 @@ async function renderHome() {
   const form = document.getElementById("quick");
   form.querySelectorAll("[data-example]").forEach((b) =>
     b.addEventListener("click", () => { form.task.value = b.dataset.example; form.task.focus(); }));
-  const toggle = form.querySelector("input[name=in_egypt]");
-  if (toggle) {
-    const showMode = () => {
-      const mode = toggle.checked ? toggle.dataset.on : toggle.dataset.off;
-      localStorage.setItem(HELPERS_KEY, mode);
-      document.getElementById("helpers-hint").textContent = cfg.helper_modes.find((m) => m.id === mode).description;
-    };
-    toggle.addEventListener("change", showMode);
-    showMode();
-  }
+  const showSovereignty = () => {
+    const code = form.country.value;
+    const level = form.sovereignty.value;
+    localStorage.setItem(COUNTRY_KEY, code);
+    localStorage.setItem(LEVEL_KEY, level);
+    document.getElementById("sovereignty-hint").innerHTML = levelHint(cfg, code, level);
+    form.querySelectorAll("[data-fit]").forEach((el) => {
+      const fit = cfg.tier_fit[el.dataset.fit]?.[code];
+      el.innerHTML = level === "open" ? "" : residencyBadge(fit, cfg.tier_locations[el.dataset.fit] || [], countryOf(cfg, code).name);
+    });
+  };
+  form.country.addEventListener("change", showSovereignty);
+  form.querySelectorAll("input[name=sovereignty]").forEach((r) => r.addEventListener("change", showSovereignty));
+  showSovereignty();
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -97,31 +98,61 @@ async function renderHome() {
     data.set("use_case", "auto");
     data.set("tiers", JSON.stringify(tiers));
     data.set("trials", form.reliable.checked ? "3" : "1");
-    data.set("helpers", chosenHelpers(cfg));
+    data.set("country", form.country.value);
+    data.set("sovereignty", form.sovereignty.value);
     [...form.files.files].forEach((file) => data.append("files", file));
     await startComparison(data, tiers.length, form.querySelector("button[type=submit]"), document.getElementById("quick-progress"));
   });
 }
 
-// On: every step that reads the request runs in Egypt. Off: the global helpers.
-function helperSwitch(cfg) {
-  const modes = cfg.helper_modes || [];
-  const egypt = modes.find((m) => m.egypt_hosted);
-  const other = modes.find((m) => !m.egypt_hosted);
-  if (!egypt || !other) return "";
-  return `<label class="switch-row">
-      <input type="checkbox" name="in_egypt" role="switch" data-on="${esc(egypt.id)}" data-off="${esc(other.id)}"
-        ${chosenHelpers(cfg) === egypt.id ? "checked" : ""}>
-      <span class="switch" aria-hidden="true"></span>
-      <span><strong>${esc(egypt.label)}</strong><span class="hint" id="helpers-hint"></span></span>
-    </label>`;
+// Where the user is, and how strictly their data must stay there.
+function sovereigntyPicker(cfg) {
+  const country = chosenCountry(cfg);
+  const level = chosenLevel(cfg);
+  return `<div class="sovereignty">
+      <label class="country-pick">Your country
+        <select name="country">${cfg.countries.map((c) =>
+          `<option value="${esc(c.code)}" ${c.code === country ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select>
+      </label>
+      <div class="segmented" role="radiogroup" aria-label="Data sovereignty">
+        ${cfg.levels.map((l) => `<label><input type="radio" name="sovereignty" value="${esc(l.id)}" ${l.id === level ? "checked" : ""}>
+          <span>${esc(l.label)}</span></label>`).join("")}
+      </div>
+    </div>
+    <p class="hint" id="sovereignty-hint"></p>`;
+}
+
+function levelHint(cfg, code, level) {
+  const c = countryOf(cfg, code);
+  const law = c.law ? `<span class="hint"> Your law: ${esc(c.law)}.</span>` : "";
+  return {
+    open: "Where a model runs doesn't matter: the cheapest model that does it right wins.",
+    prefer_local: `Models hosted in <strong>${esc(c.name)}</strong> come first, then places your law allows, then elsewhere. Every fallback is explained.${law}`,
+    strict: `Only models hosted in <strong>${esc(c.name)}</strong> or places your law allows, for helpers and reviewers too. If none qualifies, nothing is sent.${law}`,
+  }[level];
 }
 
 function helperNote(q) {
   if (!q.helpers) return "";
-  const where = q.helpers_egypt_hosted ? "in Egypt" : "with the global helpers";
+  const where = q.helpers_local ? `in ${q.sovereignty?.country_name || "your country"}` : "outside your country";
   const used = [...new Set([q.helpers.quick_design_model || q.helpers.design_model, q.helpers.profiler_model].filter(Boolean))];
   return `Your request was analysed ${where} (${esc(used.join(", "))}).`;
+}
+
+const fitBadge = (q, t) => (q.sovereignty?.level === "open" || !t.residency ? ""
+  : residencyBadge(t.residency.fit, t.residency.locations, q.sovereignty.country_name));
+
+// What the sovereignty setting did for this result: skipped models, reviewers, fallbacks.
+function sovereigntyNotes(q) {
+  const s = q.sovereignty;
+  if (!s) return "";
+  const skipped = (s.skipped_tiers || []).map((t) => `${esc(t.tier)} (${esc(t.model)})`).join(", ");
+  const notes = [
+    `${esc(s.level_label)} · ${esc(s.country_name)}`,
+    skipped ? `Strict mode skipped ${skipped}: ${s.skipped_tiers.length === 1 ? "it runs" : "they run"} outside the places your law allows, so your task was never sent there.` : "",
+    ...(s.notes || []).map(esc),
+  ].filter(Boolean);
+  return `<p class="hint sovereignty-notes">${notes.join("<br>")}</p>`;
 }
 
 function historyLink(r) {
@@ -199,21 +230,23 @@ async function renderAnswer(name) {
         <span class="hint">Not right? ${Object.keys(USE_CASES_SHORT).filter((u) => u !== q.use_case)
           .map((u) => `<button type="button" class="link" data-use-case="${esc(u)}">${esc(USE_CASES_SHORT[u][0])}</button>`).join(" · ")}</span></p>
       <div id="use-progress"></div>
+      ${sovereigntyNotes(q)}
       ${q.test_mode ? `<div class="notice">Test mode: simulated models, not real results.</div>` : ""}
 
       ${best ? `<div class="answer good">
           <div class="label">Use</div>
-          <div class="pick">${esc(best.model)} <span class="badge">${esc(best.tier)}</span> ${sourceBadge(best.open_weights, best.egypt_hosted)}</div>
+          <div class="pick">${esc(best.model)} <span class="badge">${esc(best.tier)}</span> ${sourceBadge(best.open_weights)}
+            ${fitBadge(q, best)}</div>
           <div class="facts"><strong>${money(best.cost_per_1000_egp)} EGP</strong> per 1,000 tasks ·
             about ${best.latency_s == null ? "?" : best.latency_s.toFixed(1)} s per answer · passed every check</div>
           ${q.savings_ratio && q.savings_ratio >= 1.5
             ? `<div class="hint">${esc(q.most_expensive.tier)} would cost ${Math.round(q.savings_ratio)}× more for the same result.</div>` : ""}
           ${q.proprietary_fallback ? `<div class="hint">No open-source model both passed and was fast enough for this use, so this is the proprietary fallback.</div>`
-            : q.abroad_fallback ? `<div class="hint">No Egypt-hosted model both passed and was fast enough for this use, so this open-source model runs abroad.</div>`
-            : q.prefer_egypt_hosted && best.egypt_hosted ? `<div class="hint">Hosted in Egypt: this open-source model did the task right and runs on SovereignEG's GPUs in Egypt.</div>`
+            : q.local_fallback ? `<div class="hint">No model hosted closer to you both passed and was fast enough for this use, so this one runs ${esc(best.residency.fit === "abroad" ? "abroad" : "further away")}.</div>`
+            : q.sovereignty?.level !== "open" && best.residency?.fit === "in_country" ? `<div class="hint">Hosted in ${esc(q.sovereignty.country_name)}: this model did the task right without your data leaving the country.</div>`
             : q.prefer_open_weights && best.open_weights ? `<div class="hint">Open source preferred: this is the cheapest open-source model that did the task right.</div>` : ""}
           ${q.cheapest_correct && q.cheapest_correct.cost_per_1000_egp < best.cost_per_1000_egp
-            ? `<div class="hint">Cheapest correct option: ${esc(q.cheapest_correct.model)}${q.cheapest_correct.open_weights && !q.cheapest_correct.egypt_hosted ? " (open source, runs abroad)" : q.cheapest_correct.open_weights ? "" : " (proprietary)"}
+            ? `<div class="hint">Cheapest correct option: ${esc(q.cheapest_correct.model)} (${q.cheapest_correct.open_weights ? "open source" : "proprietary"}${q.cheapest_correct.residency && q.cheapest_correct.residency.fit !== "in_country" ? `, ${esc(FIT_TEXT[q.cheapest_correct.residency.fit][1].toLowerCase())}` : ""})
                at ${money(q.cheapest_correct.cost_per_1000_egp)} EGP per 1,000 tasks.</div>` : ""}
           ${q.advice?.verdict === "best" ? `<div class="hint">✓ Agent 1 predicted this before testing.</div>` : ""}
         </div>`
@@ -227,7 +260,7 @@ async function renderAnswer(name) {
         ${q.tiers.map((t, i) => {
           const [cls, label, why] = modelStatus(t);
           return `<tr data-answer="${i}" class="${best === t ? "best" : ""}">
-            <td><strong>${esc(t.tier)}</strong> ${sourceBadge(t.open_weights, t.egypt_hosted)}<div class="hint">${esc(t.model)}</div></td>
+            <td><strong>${esc(t.tier)}</strong> ${sourceBadge(t.open_weights)} ${fitBadge(q, t)}<div class="hint">${esc(t.model)}</div></td>
             <td><span class="badge ${cls}">${esc(label)}</span>${why ? `<div class="hint">${esc(why)}</div>` : ""}</td>
             <td class="num">${money(t.cost_per_1000_egp)}</td></tr>`;
         }).join("")}
@@ -267,6 +300,10 @@ async function renderAnswer(name) {
     data.set("force", force ? "true" : "false");
     data.set("rerun_of", q.name);
     if (q.helper_mode) data.set("helpers", q.helper_mode);
+    if (q.sovereignty) {
+      data.set("country", q.sovereignty.country);
+      data.set("sovereignty", q.sovereignty.level);
+    }
     return data;
   };
   document.getElementById("run-again").addEventListener("click", (event) => {

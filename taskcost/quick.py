@@ -23,6 +23,7 @@ from .licenses import is_egypt_hosted, is_open_weights
 from .naming import slug
 from .registry import USE_CASES, registry_from_results
 from .report import finalize_run
+from .sovereignty import FIT_RANK, LEVELS, accepted, country_name, model_fit, residency_ranks
 from .runner import Backend, load_attempts
 
 
@@ -53,8 +54,16 @@ async def quick_compare(
     if not tiers:
         raise ValueError("Choose at least one model")
     seen: dict[str, str] = {}
+    skipped = []
     for tier, model in tiers:
+        if not accepted(config, model):
+            # Strict mode: the request is never sent to a model outside the places the user's law accepts.
+            skipped.append({"tier": tier, "model": model, **model_fit(model, config.country)})
+            continue
         seen.setdefault(model, tier)
+    if not seen:
+        raise ValueError(f"Strict mode: none of the chosen models runs in {country_name(config.country)} or a place "
+                         "your law allows, so nothing was sent anywhere.")
     designer_id = config.quick_design_model or config.design_model
     if not designer_id:
         raise ValueError("Set quick_design_model (or design_model) in benchmark.yaml")
@@ -80,7 +89,7 @@ async def quick_compare(
 
     recommendation, registry = await _recommend(config, plan, catalog, backend, use_case, cache, log)
     picked = (recommendation or {}).get("model")
-    if picked and picked not in seen and picked in catalog:
+    if picked and picked not in seen and picked in catalog and accepted(config, picked):
         # Always test Agent 1's own pick, so its prediction can be confirmed or refuted.
         seen[picked] = "Agent 1 pick"
         print(f"Adding Agent 1's pick ({picked}) to the comparison.", file=log)
@@ -103,6 +112,8 @@ async def quick_compare(
             "use_case_guess": use_case_guess,
             "recommendation": recommendation,
             "registry": registry,
+            "skipped_tiers": skipped,
+            "residency": {m: model_fit(m, config.country) for m in seen},
         },
     )
     finalize_run(run_dir)
@@ -116,6 +127,7 @@ async def _recommend(
     """Agent 1's recommendation before any model runs; skipped if there is no measured registry yet."""
     cards, _ = registry_from_results(config.output_path)
     registry = {model: card.to_dict() for model, card in cards.items()}
+    cards = {m: c for m, c in cards.items() if accepted(config, m)}
     jev_id = config.profiler_model
     if not cards or not jev_id or jev_id not in catalog:
         return None, registry
@@ -124,7 +136,8 @@ async def _recommend(
     prompt = build_task(plan, task, plan.load_documents(), {}).prompt
     try:
         rec = await recommend_hybrid(decider, catalog[jev_id], prompt, use_case, cards, config.escalate_at,
-                                     config.prefer_open_weights, config.min_model_pass_rate, config.prefer_egypt_hosted)
+                                     config.prefer_open_weights, config.min_model_pass_rate,
+                                     residency_ranks(config, cards))
     except Exception as exc:  # the comparison still runs without a recommendation
         print(f"Recommendation unavailable: {exc}", file=log)
         return None, registry
@@ -141,6 +154,9 @@ def quick_summary(run_dir: Path) -> dict[str, Any]:
     use_case = config.get("use_case", "batch")
     budget = USE_CASES.get(use_case, USE_CASES["batch"])["max_p90_s"]
     registry = config.get("registry") or {}
+    country = config.get("country", "EG")
+    level = config.get("sovereignty") or ("prefer_local" if config.get("prefer_egypt_hosted") else "open")
+    stored = config.get("residency") or {}
 
     tiers = []
     for entry in config.get("tiers", []):
@@ -159,6 +175,7 @@ def quick_summary(run_dir: Path) -> dict[str, Any]:
         tiers.append({
             "open_weights": is_open_weights(entry["model"]),
             "egypt_hosted": is_egypt_hosted(entry["model"]),
+            "residency": stored.get(entry["model"]) or model_fit(entry["model"], country),
             "fast_enough": budget is None or (slowest is not None and slowest <= budget),
             "slowest_s": slowest,
             "speed_source": "registry" if measured_p90 is not None else "this run",
@@ -186,10 +203,10 @@ def quick_summary(run_dir: Path) -> dict[str, Any]:
 
     reliable = [t for t in tiers if t["runs"] and t["passed"] == t["runs"] and t["fast_enough"]]
     prefer_open = config.get("prefer_open_weights", True)
-    prefer_egypt = config.get("prefer_egypt_hosted", False)
+    local_first = level != "open"
     recommended = min(reliable, key=lambda t: (
+        t["residency"]["rank"] if local_first else 0,
         (not t["open_weights"]) if prefer_open else False,
-        (not t["egypt_hosted"]) if prefer_egypt else False,
         t["cost_per_success_egp"],
     )) if reliable else None
     cheapest = min(reliable, key=lambda t: t["cost_per_success_egp"]) if reliable else None
@@ -234,16 +251,22 @@ def quick_summary(run_dir: Path) -> dict[str, Any]:
         "cheapest_correct": cheapest and cheapest is not recommended and {
             "tier": cheapest["tier"], "model": cheapest["model"], "cost_per_1000_egp": cheapest["cost_per_1000_egp"],
             "egypt_hosted": cheapest["egypt_hosted"], "open_weights": cheapest["open_weights"],
+            "residency": cheapest["residency"],
         } or None,
         "prefer_open_weights": prefer_open,
         "proprietary_fallback": bool(prefer_open and recommended and not recommended["open_weights"]),
-        "prefer_egypt_hosted": prefer_egypt,
         "helper_mode": config.get("helper_mode"),
         "helpers": config.get("helpers"),
-        "helpers_egypt_hosted": bool(config.get("helpers")) and all(
-            is_egypt_hosted(m) for m in (config.get("helpers") or {}).values() if m),
-        "abroad_fallback": bool(prefer_egypt and recommended and recommended["open_weights"]
-                                and not recommended["egypt_hosted"] and any(t["egypt_hosted"] for t in tiers)),
+        "helpers_local": bool(config.get("helpers")) and all(
+            model_fit(m, country)["rank"] <= FIT_RANK["allowed"] for m in (config.get("helpers") or {}).values() if m),
+        "sovereignty": {
+            "country": country, "country_name": country_name(country), "level": level, "level_label": LEVELS.get(level, level),
+            "notes": config.get("sovereignty_notes") or [], "skipped_tiers": config.get("skipped_tiers") or [],
+            "judges": config.get("judge_models") or [],
+        },
+        # A closer model was compared but didn't both pass and stay fast enough, so the pick runs further away.
+        "local_fallback": bool(local_first and recommended and tiers
+                               and recommended["residency"]["rank"] > min(t["residency"]["rank"] for t in tiers)),
         "savings_ratio": (
             most_expensive["cost_per_success_egp"] / recommended["cost_per_success_egp"]
             if recommended and most_expensive and most_expensive is not recommended else None

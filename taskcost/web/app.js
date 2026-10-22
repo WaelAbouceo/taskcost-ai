@@ -7,15 +7,56 @@ const esc = (value) =>
 const egp = (value) => (value == null ? "n/a" : Number(value).toFixed(4));
 const pct = (value) => (value == null ? "n/a" : `${Math.round(value * 100)}%`);
 const when = (iso) => (iso ? new Date(iso).toLocaleString() : "");
-const HELPERS_KEY = "taskcost.helpers";
-// The helper mode chosen with the home page switch (remembered in this browser), or the configured default.
-const chosenHelpers = (cfg) => {
-  const saved = localStorage.getItem(HELPERS_KEY);
-  return (cfg.helper_modes || []).some((m) => m.id === saved) ? saved : cfg.helper_mode || "";
+// ---------- sovereignty: the user's country and how strictly their data must stay close ----------
+
+const COUNTRY_KEY = "taskcost.country";
+const LEVEL_KEY = "taskcost.sovereignty";
+const TIMEZONE_COUNTRY = {
+  "Africa/Cairo": "EG", "Asia/Riyadh": "SA", "Asia/Dubai": "AE", "Asia/Qatar": "QA", "Asia/Kuwait": "KW",
+  "Asia/Bahrain": "BH", "Asia/Muscat": "OM", "Asia/Amman": "JO", "Asia/Beirut": "LB", "Asia/Baghdad": "IQ",
+  "Africa/Casablanca": "MA", "Africa/Tunis": "TN", "Africa/Algiers": "DZ", "Europe/Vienna": "AT",
+  "Europe/Brussels": "BE", "Europe/Berlin": "DE", "Europe/Copenhagen": "DK", "Europe/Madrid": "ES",
+  "Europe/Helsinki": "FI", "Europe/Paris": "FR", "Europe/Athens": "GR", "Europe/Dublin": "IE", "Europe/Rome": "IT",
+  "Europe/Amsterdam": "NL", "Europe/Warsaw": "PL", "Europe/Lisbon": "PT", "Europe/Stockholm": "SE",
+  "Europe/Oslo": "NO", "Europe/London": "GB", "Europe/Zurich": "CH", "America/Toronto": "CA", "America/Vancouver": "CA",
 };
-const sourceBadge = (open, egypt) => (open == null ? "" : open
+
+// The country from the browser's time zone, then its language (ar-EG), else the configured default. Nothing leaves the browser.
+function detectCountry(cfg) {
+  const known = new Set(cfg.countries.map((c) => c.code));
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  const fromZone = TIMEZONE_COUNTRY[zone] || (zone.startsWith("America/") ? "US" : null);
+  const fromLanguage = (navigator.languages || [navigator.language]).map((l) => (l.split("-")[1] || "").toUpperCase());
+  return [fromZone, ...fromLanguage].find((code) => code && known.has(code)) || cfg.country;
+}
+
+const chosenCountry = (cfg) => {
+  const saved = localStorage.getItem(COUNTRY_KEY);
+  return cfg.countries.some((c) => c.code === saved) ? saved : detectCountry(cfg);
+};
+const chosenLevel = (cfg) => {
+  const saved = localStorage.getItem(LEVEL_KEY);
+  return cfg.levels.some((l) => l.id === saved) ? saved : cfg.sovereignty;
+};
+const countryOf = (cfg, code) => cfg.countries.find((c) => c.code === code) || { code, name: code, law: "" };
+
+const FIT_TEXT = {
+  in_country: ["egypt", "In your country"], allowed: ["open", "Allowed by your law"], region: ["warn", "In your region"],
+  abroad: ["closed", "Abroad"], unverified: ["muted", "Location unverified"],
+};
+// A badge for where a model runs, relative to the user's country (fit from sovereignty.py).
+function residencyBadge(fit, locations = [], countryName = "") {
+  if (!fit || !FIT_TEXT[fit]) return "";
+  const [cls, label] = FIT_TEXT[fit];
+  const places = locations.filter((l) => l !== "*").join(", ");
+  const text = fit === "in_country" && countryName ? `In ${countryName}` : fit === "abroad" && places ? `Abroad · ${places}` : label;
+  const title = fit === "unverified"
+    ? "The hosting agent could not verify where this model runs (or its provider forwards requests to other companies)."
+    : `Runs in: ${places || "unknown"} (verified daily by the hosting agent from the providers' own pages)`;
+  return `<span class="badge ${cls}" title="${esc(title)}">${esc(text)}</span>`;
+}
+const sourceBadge = (open) => (open == null ? "" : open
   ? `<span class="badge open" title="Open-weight model (per SovereignEG's catalog): anyone can download and self-host it">Open source</span>`
-    + (egypt ? ` <span class="badge egypt" title="Served from SovereignEG's own GPUs in Egypt (catalog source: sovereign), so data stays in the country">Hosted in Egypt</span>` : "")
   : `<span class="badge closed" title="Proprietary model (per SovereignEG's catalog), used as the fallback">Proprietary</span>`);
 
 async function api(path, options = {}) {
@@ -53,6 +94,7 @@ async function route() {
     else if (view === "new") await renderNew();
     else if (view === "compare" && name) await renderAnswer(decodeURIComponent(name));
     else if (view === "blueprint" && name) await renderBlueprint(decodeURIComponent(name));
+    else if (view === "hosting") await renderHosting();
     else await renderHome();
   } catch (error) {
     app.innerHTML = `<div class="notice bad">${esc(error.message)}</div>`;
@@ -111,8 +153,7 @@ async function renderNew() {
         ${cfg.samples.map((s) => `<label class="check"><input type="checkbox" name="samples" value="${esc(s)}"> ${esc(s)}</label>`).join("")}` : ""}
       <div class="actions">
         <button type="submit" ${cfg.has_key ? "" : "disabled"}>Break it down</button>
-        <span class="hint">Design agent: <strong>${esc((cfg.helper_modes || []).find((m) => m.id === chosenHelpers(cfg))?.models.design_model || cfg.design_model)}</strong>
-          · usually takes about a minute · change it with the switch on the home page</span>
+        <span class="hint">Usually takes about a minute · follows your country and sovereignty choice on the home page</span>
       </div>
       <div id="progress"></div>
     </form>`;
@@ -122,7 +163,8 @@ async function renderNew() {
     event.preventDefault();
     const data = new FormData(form);
     if (!form.files.files.length) data.delete("files");
-    data.set("helpers", chosenHelpers(cfg));
+    data.set("country", chosenCountry(cfg));
+    data.set("sovereignty", chosenLevel(cfg));
     const button = form.querySelector("button");
     const progress = document.getElementById("progress");
     button.disabled = true;

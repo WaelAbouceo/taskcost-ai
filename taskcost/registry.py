@@ -83,19 +83,20 @@ def build_registry(records: list[dict[str, Any]]) -> dict[str, ModelCard]:
     return dict(sorted(cards.items(), key=lambda item: item[1].cost_per_answer_egp))
 
 
-def preference(card: ModelCard, prefer_open: bool, prefer_egypt: bool = False) -> tuple[bool, bool]:
-    """Sort key for the kind of model: lower is preferred (open-source first, then hosted in Egypt)."""
-    return ((not card.open_weights) if prefer_open else False, (not card.egypt_hosted) if prefer_egypt else False)
+def preference(card: ModelCard, prefer_open: bool, residency: dict[str, int] | None = None) -> tuple[int, bool]:
+    """Sort key for the kind of model, lower is preferred: closest to the user first (when location matters,
+    see sovereignty.residency_ranks), then open-source."""
+    return (residency.get(card.id, 9) if residency else 0, (not card.open_weights) if prefer_open else False)
 
 
 def rank_candidates(
     cards: dict[str, ModelCard], use_case: str, prefer_open: bool = True, min_pass_rate: float = 0.0,
-    prefer_egypt: bool = False,
+    residency: dict[str, int] | None = None,
 ) -> list[ModelCard]:
-    """Fast-enough, reliable-enough models in the order to try them: open-source first (if preferred), Egypt-hosted
-    first among those (if preferred), then cheapest first. Proprietary models come last, as the fallback."""
+    """Fast-enough, reliable-enough models in the order to try them: closest to the user first (if location
+    matters), open-source before proprietary (if preferred), then cheapest first."""
     fitting = [c for c in cards.values() if c.fits(use_case) and c.pass_rate >= min_pass_rate]
-    return sorted(fitting, key=lambda c: (preference(c, prefer_open, prefer_egypt), c.cost_per_answer_egp))
+    return sorted(fitting, key=lambda c: (preference(c, prefer_open, residency), c.cost_per_answer_egp))
 
 
 def task_results(records: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, float]]:
@@ -113,15 +114,15 @@ def task_results(records: list[dict[str, Any]]) -> dict[tuple[str, str], dict[st
 def best_model(
     task_id: str, use_case: str, cards: dict[str, ModelCard], results: dict[tuple[str, str], dict[str, float]],
     prefer_open: bool = False,
-    prefer_egypt: bool = False,
+    residency: dict[str, int] | None = None,
 ) -> str | None:
     """Ground truth: the cheapest model that passed every run of this task and is fast enough for the use case
-    (of the preferred kind, open-source and Egypt-hosted, if any qualifies)."""
+    (of the preferred kind, closest to the user and open-source, if any qualifies)."""
     candidates = []
     for model, card in cards.items():
         entry = results.get((model, task_id))
         if entry and entry["runs"] and entry["passed"] == entry["runs"] and card.fits(use_case):
-            candidates.append((preference(card, prefer_open, prefer_egypt), entry["cost"] / entry["runs"], model))
+            candidates.append((preference(card, prefer_open, residency), entry["cost"] / entry["runs"], model))
     return min(candidates)[2] if candidates else None
 
 

@@ -23,7 +23,7 @@ def client(tmp_path, monkeypatch):
     shutil.copytree(ROOT / "examples", tmp_path / "examples")
     # The fake backends below know the global helper models, whatever the real default is.
     config = yaml.safe_load((ROOT / "benchmark.yaml").read_text(encoding="utf-8"))
-    config["helper_mode"] = "global"
+    config.update(helper_mode="global", sovereignty="open")
     (tmp_path / "benchmark.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
     plan = Plan.load(ROOT / "tests" / "fixtures" / "contract_plan.yaml")
     plan.documents = {"contract": str(tmp_path / "examples/contracts/msa-delta-nilecloud.txt")}

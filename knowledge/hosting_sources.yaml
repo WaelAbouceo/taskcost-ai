@@ -1,0 +1,37 @@
+# What the hosting agent reads every day. Keys are the provider names SovereignEG's catalog lists in a
+# model's `engines`. Models with `source: sovereign` run on SovereignEG's own GPUs in Egypt; that comes
+# from the catalog itself, so `vllm` needs no pages.
+#   pages:          official pages about where requests are processed and stored (edit freely)
+#   routes_onward:  the provider forwards requests to other companies it does not name per request,
+#                   so the location of the actual inference can't be verified
+providers:
+  vllm:
+    name: SovereignEG GPUs (Egypt)
+    catalog_location: EG
+  openai:
+    name: OpenAI
+    pages:
+      - https://platform.openai.com/docs/guides/your-data
+  anthropic:
+    name: Anthropic
+    pages:
+      - https://www.anthropic.com/legal/privacy
+  deepinfra:
+    name: DeepInfra
+    pages:
+      - https://deepinfra.com/privacy
+      - https://deepinfra.com/docs/data
+  together:
+    name: Together AI
+    pages:
+      - https://www.together.ai/privacy
+  openrouter:
+    name: OpenRouter
+    routes_onward: true
+    pages:
+      - https://openrouter.ai/docs/features/privacy-and-logging
+      - https://openrouter.ai/privacy
+
+# SovereignEG's own description of how requests are routed; read for context and change detection.
+gateway_pages:
+  - https://sovereigneg.com/legal/provider-disclosure

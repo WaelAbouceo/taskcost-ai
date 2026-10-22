@@ -1,0 +1,62 @@
+# Countries the sovereignty settings cover, and where a user's data may be processed under each level.
+#   region:  used by "Prefer local" to rank a model in the same region above one further away.
+#   allowed: places Strict mode accepts besides the country itself (country codes or region tags).
+#            A simplification of each law's transfer rules, not legal advice.
+# Locations use ISO country codes, or a region tag when a provider only names a region (EU).
+
+regions:
+  GCC: Gulf countries
+  ARAB: Arab region
+  EU: European Union and EEA
+  EUROPE: Rest of Europe
+  NA: North America
+
+countries:
+  EG: {name: Egypt, region: ARAB, law: "Personal Data Protection Law (Law 151 of 2020)", allowed: []}
+  SA: {name: Saudi Arabia, region: GCC, law: "Personal Data Protection Law (PDPL)", allowed: []}
+  AE: {name: United Arab Emirates, region: GCC, law: "Federal Decree-Law 45 of 2021 (PDPL)", allowed: []}
+  QA: {name: Qatar, region: GCC, law: "Law No. 13 of 2016 on personal data", allowed: []}
+  KW: {name: Kuwait, region: GCC, law: "CITRA data privacy regulation", allowed: []}
+  BH: {name: Bahrain, region: GCC, law: "Personal Data Protection Law (Law 30 of 2018)", allowed: []}
+  OM: {name: Oman, region: GCC, law: "Personal Data Protection Law (Royal Decree 6/2022)", allowed: []}
+  JO: {name: Jordan, region: ARAB, law: "Personal Data Protection Law (Law 24 of 2023)", allowed: []}
+  LB: {name: Lebanon, region: ARAB, law: "Law 81 of 2018 on electronic transactions and personal data", allowed: []}
+  IQ: {name: Iraq, region: ARAB, law: "No general data protection law", allowed: []}
+  MA: {name: Morocco, region: ARAB, law: "Law 09-08 on personal data", allowed: []}
+  TN: {name: Tunisia, region: ARAB, law: "Organic Law 2004-63 on personal data", allowed: []}
+  DZ: {name: Algeria, region: ARAB, law: "Law 18-07 on personal data", allowed: []}
+  # EU and EEA: GDPR. Strict accepts the EU/EEA and countries with an EU adequacy decision in this list.
+  AT: {name: Austria, region: EU, law: GDPR, allowed: [EU, GB, CH]}
+  BE: {name: Belgium, region: EU, law: GDPR, allowed: [EU, GB, CH]}
+  DE: {name: Germany, region: EU, law: GDPR, allowed: [EU, GB, CH]}
+  DK: {name: Denmark, region: EU, law: GDPR, allowed: [EU, GB, CH]}
+  ES: {name: Spain, region: EU, law: GDPR, allowed: [EU, GB, CH]}
+  FI: {name: Finland, region: EU, law: GDPR, allowed: [EU, GB, CH]}
+  FR: {name: France, region: EU, law: GDPR, allowed: [EU, GB, CH]}
+  GR: {name: Greece, region: EU, law: GDPR, allowed: [EU, GB, CH]}
+  IE: {name: Ireland, region: EU, law: GDPR, allowed: [EU, GB, CH]}
+  IT: {name: Italy, region: EU, law: GDPR, allowed: [EU, GB, CH]}
+  NL: {name: Netherlands, region: EU, law: GDPR, allowed: [EU, GB, CH]}
+  PL: {name: Poland, region: EU, law: GDPR, allowed: [EU, GB, CH]}
+  PT: {name: Portugal, region: EU, law: GDPR, allowed: [EU, GB, CH]}
+  SE: {name: Sweden, region: EU, law: GDPR, allowed: [EU, GB, CH]}
+  NO: {name: Norway, region: EU, law: GDPR (EEA), allowed: [EU, GB, CH]}
+  GB: {name: United Kingdom, region: EUROPE, law: UK GDPR, allowed: [EU, CH]}
+  CH: {name: Switzerland, region: EUROPE, law: "Federal Act on Data Protection (FADP)", allowed: [EU, GB]}
+  US: {name: United States, region: NA, law: "No federal privacy law; state laws apply", allowed: []}
+  CA: {name: Canada, region: NA, law: PIPEDA, allowed: [EU, GB]}
+
+# Words that must appear in a quote for the hosting agent to accept a location (checked case-insensitively).
+location_words:
+  US: ["united states", "u.s.", "usa", "america"]
+  EU: ["european union", "europe", "eea", " eu ", "(eu)", "eu-", "eu data"]
+  GB: ["united kingdom", "u.k.", " uk "]
+  CA: ["canada"]
+  EG: ["egypt", "cairo"]
+  SA: ["saudi"]
+  AE: ["emirates", "uae", "dubai", "abu dhabi"]
+  IN: ["india"]
+  JP: ["japan"]
+  SG: ["singapore"]
+  AU: ["australia"]
+  CH: ["switzerland", "swiss"]
