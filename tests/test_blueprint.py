@@ -231,3 +231,73 @@ def test_build_steps_cost_once_and_run_steps_every_month():
     assert totals["one_time_cost_egp"] == pytest.approx(600) and totals["monthly_cost_egp"] == pytest.approx(12)
     assert totals["first_year_cost_egp"] == pytest.approx(600 + 12 * 12)
     assert totals["strongest_one_time_cost_egp"] == pytest.approx(6000) and build["monthly_cost_egp"] == 0.0
+
+
+def test_plans_mark_specialised_models_reviews_and_costliest_steps():
+    from taskcost.blueprint import _clean, costliest_steps, recompute_totals
+
+    data = {"level": "project", "key_assumptions": ["about 7,200 alarms a month", "", "5 years of history"], "workflows": [
+        {"name": "Plant", "steps": [
+            {"name": "Sensor anomalies flagged", "actor": "ml", "ml_kind": "time-series anomaly detection"},
+            {"name": "Incident classified", "actor": "ai", "review": "person", "task_type": "classification",
+             "use_case": "batch", "monthly_volume": 5, "instruction": "Classify it.", "criteria": ["a"]},
+            {"name": "Alarm explained", "actor": "ai", "task_type": "summarization", "use_case": "realtime",
+             "monthly_volume": 7200, "instruction": "Explain it.", "criteria": ["a"]},
+            {"name": "Docs migrated", "actor": "ai", "phase": "build", "total_volume": 200, "task_type": "extraction",
+             "use_case": "batch", "instruction": "Extract.", "criteria": ["a"]}]}]}
+    blueprint = _clean(data)
+    ml, incident, alarm, docs = blueprint["workflows"][0]["steps"]
+    assert ml["actor"] == "ml" and ml["ml_kind"] == "time-series anomaly detection"
+    assert incident["review"] == "person" and "review" not in alarm
+    assert blueprint["key_assumptions"] == ["about 7,200 alarms a month", "5 years of history"]
+    for step in (incident, alarm, docs):
+        step["cost_per_answer_egp"] = 0.01
+    recompute_totals(blueprint)
+    assert costliest_steps(blueprint, 2) == [alarm["id"], docs["id"]]  # 864 a year, then 2 once, then 0.6 a year
+
+
+def test_one_step_failing_does_not_lose_the_other_measurements(tmp_path):
+    import io
+
+    from taskcost.blueprint import SAMPLE_SYSTEM, verify_blueprint
+
+    class Flaky(FakeVerifyBackend):
+        async def chat(self, model, messages, max_tokens, temperature=None, extra=None):
+            if messages[0]["content"] == SAMPLE_SYSTEM and "Payment reminder" in messages[1]["content"]:
+                return Completion("not json at all", 100, 50, 0, 1.0)  # this step's example can't be written
+            return await super().chat(model, messages, max_tokens, temperature, extra)
+
+    config, catalog, blueprint = verification_setup()
+    measured = asyncio.run(verify_blueprint(config, blueprint, Flaky(), catalog, CARDS, tmp_path / "v", io.StringIO()))
+    steps = {s["name"]: s for w in measured["workflows"] for s in w["steps"] if s["actor"] == "ai"}
+    assert steps["Payment reminder"]["verdict"] == "error" and "Could not write an example" in steps["Payment reminder"]["measure_error"]
+    assert steps["Read supplier invoice"]["verdict"] == "measured" and measured["verification"]["measured_steps"] >= 1
+
+
+def test_a_check_every_model_fails_is_treated_as_too_strict():
+    from taskcost.blueprint import _winner_without_impossible_checks
+
+    def run(model, failed):
+        criteria = [{"criterion": c, "required": True, "passed": c not in failed} for c in ("facts", "exactly 3 paragraphs")]
+        return {"task_id": "S1", "model": model, "error_kind": None, "criteria": criteria}
+
+    step = {"id": "S1", "tried": [{"model": m, "passed": 0, "runs": 1} for m in ("cheap", "mid", "big")]}
+    records = [run("cheap", {"facts", "exactly 3 paragraphs"}), run("mid", {"exactly 3 paragraphs"}),
+               run("big", {"exactly 3 paragraphs"})]
+    winner = _winner_without_impossible_checks(step, records)
+    assert winner["model"] == "mid" and step["dropped_checks"] == ["exactly 3 paragraphs"]
+    two = {"id": "S1", "tried": step["tried"][:2]}
+    assert _winner_without_impossible_checks(two, records) is None  # two models are too few to blame the check
+
+
+def test_measuring_some_steps_leaves_the_others_as_estimates(tmp_path):
+    import io
+
+    from taskcost.blueprint import verify_blueprint
+
+    config, catalog, blueprint = verification_setup()
+    first = next(s for w in blueprint["workflows"] for s in w["steps"] if s["actor"] == "ai")
+    measured = asyncio.run(verify_blueprint(config, blueprint, FakeVerifyBackend(), catalog, CARDS, tmp_path / "v",
+                                            io.StringIO(), only_steps={first["id"]}))
+    others = [s for w in measured["workflows"] for s in w["steps"] if s["actor"] == "ai" and s["id"] != first["id"]]
+    assert first["verdict"] == "measured" and all("verdict" not in s for s in others)

@@ -70,6 +70,7 @@ class BenchmarkConfig:
     review_model: str | None = None   # the log reviewer agent (reviewer.py)
     review_days: float = 7.0          # how much of the usage log each review reads
     review_refresh_hours: float = 24.0
+    auto_measure_steps: int = 0       # measure a new plan's costliest steps automatically (0 = off)
     min_model_pass_rate: float = 0.85
     cache_decisions_hours: float = 24.0
     cache_comparisons_hours: float = 24.0
@@ -172,6 +173,7 @@ def load_config(path: str | Path) -> BenchmarkConfig:
         review_model=data.get("review_model"),
         review_days=float(data.get("review_days", 7)),
         review_refresh_hours=float(data.get("review_refresh_hours", 24)),
+        auto_measure_steps=int(data.get("auto_measure_steps", 0)),
         min_model_pass_rate=float(data.get("min_model_pass_rate", 0.85)),
         cache_decisions_hours=float((data.get("cache") or {}).get("decisions_hours", 24)),
         cache_comparisons_hours=float((data.get("cache") or {}).get("comparisons_hours", 24)),

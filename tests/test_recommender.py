@@ -204,3 +204,20 @@ def test_model_variants_call_the_base_model_with_their_settings():
     assert (spec.id, spec.label, spec.extra, spec.temperature) == ("qwen-x", "qwen-x@instant", {"reasoning_effort": "none"}, 0.2)
     assert cfg.model_spec("gpt-oss-20b").id == "gpt-oss-20b" and base_model("gpt-oss-20b@low") == "gpt-oss-20b"
     assert is_open_weights("gpt-oss-20b@anything")
+
+
+def test_hard_tasks_decide_which_model_handles_hard_work():
+    hard_ok = [{**record("careful", "hard-1", True, 0.03, 2.0)}, {**record("careful", "easy-1", True, 0.03, 2.0)}]
+    hard_fail = [{**record("sloppy", "hard-1", False, 0.01, 1.0)}, {**record("sloppy", "easy-1", True, 0.01, 1.0)},
+                 {**record("sloppy", "easy-2", True, 0.01, 1.0)}, {**record("sloppy", "easy-3", True, 0.01, 1.0)}]
+    cards = build_registry(hard_ok + hard_fail, frozenset({"hard-1"}))
+    assert cards["careful"].hard_pass_rate == 1.0 and cards["sloppy"].hard_pass_rate == 0.0
+    jev = FakeJev({"needs_stronger": {"noul": 0.9}})
+    assert asyncio.run(recommend_hybrid(jev, JEV, "t", "batch", cards)).model == "careful"
+
+
+def test_generated_plan_tests_do_not_lower_a_models_reliability():
+    library = [record("m", f"t{i}", True, 0.01, 1.0) for i in range(4)]
+    plan = [{**record("m", "W1.S1", False, 0.02, 3.0), "verification": True} for _ in range(4)]
+    card = build_registry(library + plan)["m"]
+    assert card.pass_rate == 1.0 and card.runs == 8 and card.latency_median_s == 2.0

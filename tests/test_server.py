@@ -224,3 +224,15 @@ def test_page_files_are_versioned_and_revalidated(client):
     assert page.headers["cache-control"] == "no-cache"
     assert "/static/app.js?v=" in page.text and "/static/style.css?v=" in page.text
     assert client.get("/static/app.js").headers["cache-control"] == "no-cache"
+
+
+def test_jobs_cut_off_by_a_restart_are_reported_not_lost(tmp_path, monkeypatch):
+    jobs_dir = tmp_path / ".cache" / "jobs"
+    jobs_dir.mkdir(parents=True)
+    (jobs_dir / "123-abc.json").write_text(json.dumps({"id": "123-abc", "kind": "blueprint", "status": "running",
+                                                       "phase": "design", "started": time.time() - 30}))
+    monkeypatch.setattr(server, "load_api_key", lambda *a, **k: None)
+    with TestClient(server.create_app(tmp_path, ROOT / "benchmark.yaml")) as fresh:
+        job = fresh.get("/api/jobs/123-abc").json()
+        assert job["status"] == "error" and job["error"].startswith("The server restarted")
+        assert fresh.get("/api/jobs/never-existed").json()["error"].startswith("The server restarted")

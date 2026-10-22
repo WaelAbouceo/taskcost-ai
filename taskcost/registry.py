@@ -41,6 +41,8 @@ class ModelCard:
     egypt_hosted: bool = False
     latency_p90_short_s: float | None = None  # slowest 1 in 10 among answers of chatbot length
     short_runs: int = 0
+    hard_pass_rate: float | None = None  # on library tasks tagged "hard" (multi-step reasoning with traps)
+    hard_runs: int = 0
 
     def speed_for(self, use_case: str) -> float:
         """The slowest-1-in-10 latency that counts for this use case."""
@@ -74,7 +76,7 @@ def load_runs(run_dirs: list[Path]) -> list[dict[str, Any]]:
     return records
 
 
-def build_registry(records: list[dict[str, Any]]) -> dict[str, ModelCard]:
+def build_registry(records: list[dict[str, Any]], hard_tasks: set[str] | frozenset[str] = frozenset()) -> dict[str, ModelCard]:
     by_model: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for r in records:
         if r.get("error_kind") is None:
@@ -84,11 +86,15 @@ def build_registry(records: list[dict[str, Any]]) -> dict[str, ModelCard]:
         latencies = [r["latency_s"] for r in runs if r.get("latency_s") is not None]
         short = [r["latency_s"] for r in runs if r.get("latency_s") is not None
                  and (r.get("completion_tokens") or 0) <= SHORT_ANSWER_TOKENS]
+        hard = [r for r in runs if r["task_id"] in hard_tasks]
+        # Reliability comes from the reviewed task library. Plan measurements use one-off generated tests, some of
+        # them flawed (every model fails them), so they add speed and cost data but don't lower a model's record.
+        graded = [r for r in runs if not r.get("verification")] or runs
         cards[model] = ModelCard(
             id=model,
             tier=str(runs[0].get("tier", "")),
             runs=len(runs),
-            pass_rate=sum(r["passed"] for r in runs) / len(runs),
+            pass_rate=sum(r["passed"] for r in graded) / len(graded),
             latency_median_s=statistics.median(latencies),
             latency_p90_s=percentile(latencies, 90),
             cost_per_answer_egp=statistics.median(r["cost_egp"] for r in runs),
@@ -96,6 +102,8 @@ def build_registry(records: list[dict[str, Any]]) -> dict[str, ModelCard]:
             egypt_hosted=is_egypt_hosted(model),
             latency_p90_short_s=percentile(short, 90),
             short_runs=len(short),
+            hard_pass_rate=sum(r["passed"] for r in hard) / len(hard) if hard else None,
+            hard_runs=len(hard),
         )
     return dict(sorted(cards.items(), key=lambda item: item[1].cost_per_answer_egp))
 
@@ -150,7 +158,16 @@ def registry_from_results(results_dir: Path) -> tuple[dict[str, ModelCard], dict
     """
     dirs = sorted(results_dir.glob("calibration*")) + sorted(results_dir.glob("blueprint-*/verification"))
     records = load_runs(dirs)
-    return build_registry(records), task_results(records)
+    return build_registry(records, hard_task_ids(results_dir.parent / "library")), task_results(records)
+
+
+def hard_task_ids(library: Path) -> frozenset[str]:
+    """Ids of library tasks tagged "hard", whose results show which models handle difficult work."""
+    if not library.is_dir():
+        return frozenset()
+    from .tasks import load_tasks
+
+    return frozenset(t.id for t in load_tasks(library) if "hard" in t.tags)
 
 
 def save_registry(cards: dict[str, ModelCard], path: Path, sources: list[str]) -> None:

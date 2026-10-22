@@ -74,6 +74,7 @@ model_variants:
     id: SovereignEG/Qwen3.8-27B-FP8
     reasoning_effort: none
 
+auto_measure_steps: 3   # measure each new plan's 3 costliest steps for real, in the background (about 3-4 EGP)
 escalate_at: 0.5                        # step up from the cheapest model if Agent 1 thinks it more likely than not to fail
 
 cache:

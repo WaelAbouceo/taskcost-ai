@@ -327,3 +327,6 @@ ol.live-steps li.now { color: var(--text); font-weight: 600; }
 span.button { display: inline-block; font-weight: 600; padding: 11px 20px; border-radius: var(--radius-sm); cursor: pointer; }
 span.button.secondary { background: rgba(255, 255, 255, 0.03); color: var(--text); border: 1px solid rgba(255, 255, 255, 0.15); }
 span.button.secondary:hover { background: var(--hover); }
+
+.card.key-assumptions { margin: 0 0 16px; }
+.card.key-assumptions ul { margin: 8px 0; padding-left: 20px; color: var(--mist); }

@@ -1,0 +1,44 @@
+id: safety-incident-classification
+category: classification
+tags: [hard, manufacturing, safety, reasoning]
+description: Classify plant safety incidents by severity and decide which must be reported, with a restricted-duty trap.
+prompt: |
+  Classify each incident using the plant's rules, and say whether it must be reported to the authorities.
+
+  Severity levels:
+  1 = First aid only (treated on site, back to normal duty).
+  2 = Medical treatment or restricted duty (treated by a doctor or hospital outpatient, or moved to lighter duties),
+      with no days away from work.
+  3 = Lost-time injury (one or more days away from work).
+  4 = Permanent disability or fatality.
+  Process safety event: any release of hazardous gas, whether or not anyone is hurt.
+
+  Reporting rule: report an incident if it caused more than 3 days away from work, a hospital admission (staying
+  at least one night), a death, or a gas release that required evacuating any area.
+
+  Incidents:
+  I-1. An operator slipped near the brine tank and sprained an ankle. The site clinic strapped it and the operator
+       returned to normal duty the next shift.
+  I-2. Ammonia leaked from the absorber flange; 40 ppm was measured and the control room was evacuated for 20
+       minutes. Nobody was hurt.
+  I-3. A technician burned a hand on the hot calciner casing, was treated at a hospital as an outpatient (not
+       admitted) and worked on restricted duties for 5 days without missing any shifts.
+grader:
+  type: rubric
+  criteria:
+    - Classifies I-1 as severity 1 (first aid only).
+    - Treats I-2 as a process safety event (a gas release).
+    - Classifies I-3 as severity 2 (medical treatment or restricted duty), not a lost-time injury.
+    - Says I-2 must be reported, because the release required an evacuation.
+    - Says I-1 and I-3 do not need to be reported.
+reference: |
+  I-1: Severity 1, first aid only. Not reportable.
+  I-2: Process safety event (ammonia release); no injury. Reportable, because the control room was evacuated.
+  I-3: Severity 2, hospital outpatient treatment and restricted duty with no days away from work. Not reportable:
+       no lost days, no admission, no death, no gas release.
+counterexamples:
+  - |
+    I-1: severity 1, not reportable. I-2: process safety event, not reportable because nobody was hurt.
+    I-3: severity 3 lost-time injury, reportable because of 5 days of restricted duty.
+  - |
+    I-1: severity 2. I-2: severity 1. I-3: severity 2. Only I-3 must be reported because a hospital treated it.

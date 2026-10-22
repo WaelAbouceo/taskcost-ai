@@ -120,14 +120,16 @@ async def recommend_hybrid(
     prefer_open: bool = True,
     min_pass_rate: float = 0.0,
     residency: dict[str, int] | None = None,
+    min_hardness: float = 0.0,
 ) -> Recommendation:
-    """Code ranks fast-enough, reliable models (closest to the user and open-source first, then cheapest); Agent 1
+    """`min_hardness` treats a task as at least this hard (steps a person must review are escalated).
+    Code ranks fast-enough, reliable models (closest to the user and open-source first, then cheapest); Agent 1
     only judges whether the task needs a stronger one, in which case the most reliable model of the preferred
     kind is used. `residency` ranks models by location (sovereignty.residency_ranks); None ignores location."""
     fitting = rank_candidates(cards, use_case, prefer_open, min_pass_rate, residency)
     task = task_text if len(task_text) <= MAX_TASK_CHARS else task_text[:MAX_TASK_CHARS] + "\n[...]"
     decision = await backend.decide(jev, {"task": task}, HARDNESS_QUESTION)
-    hard = float((decision.answers.get("needs_stronger") or {}).get("noul", 0.0))
+    hard = max(float((decision.answers.get("needs_stronger") or {}).get("noul", 0.0)), min_hardness)
     best_kind = preference(fitting[0], prefer_open, residency) if fitting else None
     preferred = [c for c in fitting if preference(c, prefer_open, residency) == best_kind]
     top = preferred[0] if preferred else None
@@ -136,7 +138,9 @@ async def recommend_hybrid(
     if not fitting:
         chosen, note = None, "No reliable model in the registry is fast enough for this use case."
     elif hard >= escalate_at:
-        strongest = max(preferred, key=lambda c: (c.pass_rate, -c.cost_per_answer_egp))
+        # The most reliable on hard work: the record on the hard library tasks first, then overall, then cost.
+        strongest = max(preferred, key=lambda c: (c.hard_pass_rate if c.hard_pass_rate is not None else c.pass_rate,
+                                                  c.pass_rate, -c.cost_per_answer_egp))
         chosen = strongest.id
         note = (f"Agent 1 judged the task hard (p={hard:.2f}), so the most reliable {kind}model that is fast enough was chosen."
                 if strongest is not preferred[0] else

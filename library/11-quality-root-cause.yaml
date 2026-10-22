@@ -1,0 +1,55 @@
+id: quality-root-cause
+category: root-cause-analysis
+tags: [hard, manufacturing, reasoning]
+description: Find out-of-specification batches in a soda ash plant and tie each deviation to its cause by timing.
+prompt: |
+  You are the quality engineer at a soda ash (sodium carbonate) plant. Specification for dense soda ash:
+  Na2CO3 at least 99.2%, NaCl at most 0.50%, Fe at most 20 ppm. Each batch is 50 tonnes.
+
+  Lab results:
+  | Batch | Produced          | Na2CO3 % | NaCl % | Fe ppm |
+  | B-101 | Mon 06:00 shift A | 99.4     | 0.31   | 12     |
+  | B-102 | Mon 14:00 shift B | 99.3     | 0.38   | 14     |
+  | B-103 | Mon 22:00 shift C | 99.1     | 0.58   | 13     |
+  | B-104 | Tue 06:00 shift A | 99.0     | 0.64   | 15     |
+  | B-105 | Tue 14:00 shift B | 99.3     | 0.41   | 31     |
+  | B-106 | Tue 22:00 shift C | 99.4     | 0.33   | 12     |
+
+  Process log:
+  - Mon 19:30: maintenance found the bicarbonate wash-water valve V-12 partly closed; it was fully reopened Tue 11:00.
+  - Tue 09:00: calciner screw conveyor bearing replaced and a new steel liner installed.
+  - Tue 13:30: rotary dryer high-temperature alarm, cleared within 10 minutes; product temperature stayed in range.
+
+  Answer:
+  1. Which batches are out of specification, and on which parameters?
+  2. The most likely cause of each deviation, with your reasoning.
+  3. How many tonnes must be quarantined?
+  4. One check that would confirm each cause.
+grader:
+  type: rubric
+  criteria:
+    - Identifies B-103 and B-104 as out of specification for NaCl.
+    - Identifies B-105 as out of specification for iron (Fe).
+    - Does not call B-101, B-102 or B-106 out of specification.
+    - Attributes the high NaCl in B-103 and B-104 to the partly closed wash-water valve V-12, based on the timing.
+    - Attributes the high iron in B-105 to the new steel liner or conveyor work in the calciner.
+    - Does not name the dryer alarm as the cause of any deviation.
+    - States that 150 tonnes must be quarantined.
+reference: |
+  1. Out of specification: B-103 (Na2CO3 99.1% below 99.2%, NaCl 0.58% above 0.50%), B-104 (Na2CO3 99.0%,
+     NaCl 0.64%) and B-105 (Fe 31 ppm above 20 ppm). B-101, B-102 and B-106 are within specification.
+  2. B-103 and B-104 were produced while wash-water valve V-12 was partly closed (Mon 19:30 to Tue 11:00):
+     poor washing of the crude bicarbonate leaves chloride, which raises NaCl and lowers purity. B-105, made after
+     the valve was reopened, has normal NaCl, which supports this. B-105's iron comes from the new steel liner in
+     the calciner screw conveyor installed Tue 09:00 (wear and iron pickup). The dryer alarm was brief, product
+     temperature stayed in range, and dryer temperature would not add chloride or iron.
+  3. 3 batches x 50 tonnes = 150 tonnes.
+  4. Check chloride in the bicarbonate cake and the wash-water flow log; check iron at the conveyor discharge or
+     run a magnetic separation test and inspect the new liner.
+counterexamples:
+  - |
+    1. B-104 and B-105 are out of specification. 2. The dryer high-temperature alarm on Tuesday caused both.
+    3. 100 tonnes. 4. Recalibrate the dryer.
+  - |
+    1. B-103, B-104 and B-105. 2. B-103 and B-104: the dryer alarm overheated the product. B-105: the valve.
+    3. 150 tonnes. 4. Inspect the dryer.

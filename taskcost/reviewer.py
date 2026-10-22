@@ -74,6 +74,7 @@ def compute_metrics(events: list[dict[str, Any]]) -> dict[str, Any]:
         "users.tailored_share": _rate(sum(1 for r in requests if r.get("tailored")),
                                       sum(1 for r in requests if r.get("via") == "start")),
         "errors.failed_jobs": len(by_kind.get("job_failed", [])),
+        "errors.interrupted_jobs": len(by_kind.get("job_interrupted", [])),
         "errors.failed_by_kind": dict(Counter(e.get("job") for e in by_kind.get("job_failed", []))),
         "sovereignty.strict_refusals": len(by_kind.get("strict_refused", [])),
         "sovereignty.refusals_by_country": dict(Counter(e.get("country") for e in by_kind.get("strict_refused", []))),
@@ -162,7 +163,7 @@ METRIC_HELP = {
     "cost.": "EGP per comparison, and the share spent on helpers (understanding the task) and reviewers rather than the models tested",
     "time.": "seconds from pressing Compare to the result",
     "blueprint.": "plans for workflows and systems: AI steps per plan, median monthly running cost, share of plans with one-time setup work (migration, knowledge base) and its median cost, share of steps with no model fast enough, share of plans measured on examples rather than estimated",
-    "errors.": "jobs that failed with an error",
+    "errors.": "jobs that failed with an error, and jobs cut off because the server restarted while they ran",
     "users.": "distinct anonymous users (browsers), and the share of their requests tailored to what was learned about them (industry, language, usual use case)",
 }
 PRODUCT_FACTS = (
@@ -192,6 +193,7 @@ SIGNALS = [
     ("cost.helpers_and_reviewers_share", 0.5, ">", "helpers and reviewers cost more than the models tested"),
     ("time.median_comparison_s", 45, ">", "comparisons are slow"),
     ("errors.failed_jobs", 2, ">", "jobs fail"),
+    ("errors.interrupted_jobs", 0, ">", "jobs were cut off by a server restart, so users lost their results"),
     ("sovereignty.strict_refusals", 0, ">", "Strict mode refused requests, so there is demand in countries without local models"),
     ("blueprint.unpriced_step_rate", 0.1, ">", "plan steps often have no model fast enough"),
     ("blueprint.measured_share", 0.2, "<", "plans are rarely measured, so their costs stay estimates"),
@@ -202,7 +204,7 @@ SIGNALS = [
 EFFECT_METRICS = (
     "outcome.chat_proprietary_rate", "outcome.proprietary_fallback_rate", "outcome.no_winner_rate",
     "agent1.best_rate", "cost.avg_per_comparison_egp", "time.median_comparison_s", "use_case.override_rate",
-    "blueprint.measured_share", "errors.failed_jobs",
+    "blueprint.measured_share", "errors.failed_jobs", "errors.interrupted_jobs",
 )
 MAX_CHANGES = 5
 

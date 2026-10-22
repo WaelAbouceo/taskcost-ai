@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Generic, Protocol, TypeVar
 
-from .client import Completion, ModelInfo
+from .client import APIError, Completion, ModelInfo
 
 T = TypeVar("T")
 RETRY_HINT = "That reply has problems: {problem}. Reply with the corrected JSON only."
@@ -45,14 +45,27 @@ async def chat_json(
     prompt_tokens = completion_tokens = 0
     latency = 0.0
     problem = ""
-    for _ in range(tries):
-        completion = await backend.chat(model, messages, max_tokens=max_tokens, temperature=0.0)
+    extra: dict[str, Any] | None = None
+    attempt = 0
+    while attempt < tries:
+        attempt += 1
+        try:
+            completion = await backend.chat(model, messages, max_tokens=max_tokens, temperature=0.0, extra=extra)
+        except APIError:
+            if extra is None:
+                raise
+            break  # the model doesn't accept the no-reasoning setting
         cost += completion.cost(model)
         prompt_tokens += completion.prompt_tokens
         completion_tokens += completion.completion_tokens
         latency += completion.latency_s
+        if not completion.text.strip() and extra is None:
+            # A reasoning model can think until it stops without writing an answer: ask once more without reasoning.
+            problem, extra = "the model reasoned but wrote no answer", {"reasoning_effort": "none"}
+            tries += 1
+            continue
         try:
-            value = parse(completion.text)
+            value = parse(completion.text or completion.reasoning)
         except (ValueError, KeyError, TypeError) as exc:
             problem = str(exc)
             messages += [{"role": "assistant", "content": completion.text},

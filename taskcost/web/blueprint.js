@@ -3,8 +3,11 @@
 // Workflows and projects: how the work runs, who does each step, and what the AI part costs per month.
 
 const perMonth = (v) => (v == null ? "—" : v >= 100 ? Math.round(v).toLocaleString() : v >= 1 ? v.toFixed(1) : v.toFixed(2));
-const WHO = { ai: ["good", "AI"], person: ["muted", "Person"], system: ["muted", "System"] };
+// Measuring a 16-step plan cost 17.9 EGP (example writing, models and reviewers), so about 1.1 EGP per step.
+const MEASURE_EGP_PER_STEP = 1.1;
+const WHO = { ai: ["good", "AI"], ml: ["warn", "ML model"], person: ["muted", "Person"], system: ["muted", "System"] };
 const UNRESOLVED = {
+  error: ["bad", "Couldn't be measured", "measuring this step failed; re-measure it, or use your own example"],
   needs_frontier: ["warn", "Needs Frontier", "no cheaper model passed; Frontier wasn't tried, to keep costs down"],
   no_reliable_test: ["muted", "No reliable test", "the test itself failed its own checks, so it wasn't used"],
   no_model_passed: ["bad", "No model passed", "every fast-enough model failed"],
@@ -34,7 +37,8 @@ function modelCell(s) {
   if (s.measured) {
     const m = s.measured;
     return `${esc(m.model)} <span class="badge good">Measured</span> ${sourceBadge(openWeights[m.model])} ${placeBadge(m.model)}
-      <div class="hint">${esc(m.tier)}${m.latency_s == null ? "" : ` · ${m.latency_s.toFixed(1)} s`}${s.sample?.source === "user" ? " · your example" : ""}</div>`;
+      <div class="hint">${esc(m.tier)}${m.latency_s == null ? "" : ` · ${m.latency_s.toFixed(1)} s`}${s.sample?.source === "user" ? " · your example" : ""}</div>
+      ${s.dropped_checks?.length ? `<div class="hint" title="${esc(s.dropped_checks.join("; "))}">One check was dropped: every model failed it, so the check was too strict.</div>` : ""}`;
   }
   if (UNRESOLVED[s.verdict]) {
     const [cls, label, why] = UNRESOLVED[s.verdict];
@@ -79,6 +83,8 @@ async function renderBlueprint(name) {
   const strongest = registry[b.strongest_model];
   const strongestPer = strongest ? strongest.cost_per_answer_egp / Math.max(strongest.pass_rate, 0.5) : 0;
   const aiSteps = b.workflows.flatMap((w) => w.steps.filter((s) => s.actor === "ai"));
+  const mlSteps = b.workflows.flatMap((w) => w.steps.filter((s) => s.actor === "ml"));
+  const reviewed = aiSteps.filter((s) => s.review === "person");
   const isBuild = (s) => s.phase === "build";
   const hasBuild = aiSteps.some(isBuild);
   const stepVolume = (s) => (isBuild(s) ? s.total_volume : s.monthly_volume) || 0;
@@ -102,16 +108,37 @@ async function renderBlueprint(name) {
           preparing a knowledge base); running is the work that repeats every month.</div>` : ""}
         ${v ? `<div class="hint"><strong>Measured</strong> on a realistic example for ${v.measured_steps} of ${v.ai_steps} AI steps,
               cheapest model first. Measuring has cost ${egp(spent)} EGP so far.</div>`
-            : `<div class="hint"><strong>Estimate only.</strong> Volumes are assumed and no step has been tested yet.
-                <button type="button" class="link" id="measure-top">Measure it for real (about ${Math.round(aiSteps.length * 0.5)} EGP) →</button></div>`}
+            : `<div class="hint"><strong>Estimate only.</strong> Volumes are assumed and no step has been tested yet; real
+                outputs are often longer than the estimate assumes, so measured costs can be several times higher.
+                ${b.measuring ? "Measuring the costliest steps now…" : `<button type="button" class="link" id="measure-top">Measure it for real (about ${Math.round(aiSteps.length * MEASURE_EGP_PER_STEP)} EGP) →</button>`}</div>`}
         <div class="hint">Using ${esc(b.strongest_model)} for every AI step would cost about <span id="bp-strongest"></span>.</div>
       </div>
 
-      ${v ? "" : `<div class="card measure">
+      ${b.key_assumptions?.length ? `<div class="card key-assumptions"><strong>What drives this cost</strong>
+          <ul>${b.key_assumptions.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>
+          <p class="hint">Assumed from your request. If yours differ, change the volumes in the tables below and the cost updates.</p></div>` : ""}
+
+      ${mlSteps.length || reviewed.length ? `<div class="card nudge">
+          ${mlSteps.length ? `<p><strong>${mlSteps.length} step${mlSteps.length === 1 ? " needs" : "s need"} a specialised model, not a language model</strong>
+            (${esc([...new Set(mlSteps.map((s) => s.ml_kind))].join(", "))}). They are not priced here: they need their own
+            data and training, usually by a data-science team.</p>` : ""}
+          ${reviewed.length ? `<p><strong>${reviewed.length} AI step${reviewed.length === 1 ? "" : "s"} should be checked by a person</strong>
+            before use, because a wrong result could harm people, the environment, money or compliance. Agent 1 picked
+            the model with the best record on hard tasks for them.</p>` : ""}
+        </div>` : ""}
+
+      ${b.measuring ? `<div class="card measure" id="measuring-card">
+          <strong>${b.measuring.auto ? `Measuring the ${b.measuring.steps.length} costliest steps for real` : "Measuring"}</strong>
+          <p class="hint">We write a realistic example for each, check the test itself, then try the cheapest models first.
+            The plan is usable meanwhile; the numbers update when it finishes.</p>
+          <div id="measuring-progress"></div>
+        </div>` : ""}
+
+      ${v || b.measuring ? "" : `<div class="card measure">
           <strong>Make it real</strong>
           <p class="hint">For each AI step we write a realistic example (a full invoice, a customer email…), check that the
-            test itself is sound, then try the cheapest models first. About ${Math.max(3, Math.round(aiSteps.length / 3))} minutes;
-            usually about ${Math.round(aiSteps.length * 0.5)} EGP, at most about ${Math.round(aiSteps.length * 1.5)} EGP.</p>
+            test itself is sound, then try the cheapest models first. About ${Math.max(3, Math.round(aiSteps.length / 2))} minutes;
+            usually about ${Math.round(aiSteps.length * MEASURE_EGP_PER_STEP)} EGP, at most about ${Math.round(aiSteps.length * 2)} EGP.</p>
           <button type="button" id="measure">Measure it for real</button>
           <div id="measure-progress"></div>
         </div>`}
@@ -146,12 +173,16 @@ async function renderBlueprint(name) {
           <tr><th>Step</th><th>Who</th><th>Model</th><th class="num">How many</th><th class="num">EGP</th></tr>
           ${w.steps.map((s) => {
             const [cls, who] = WHO[s.actor] || WHO.person;
+            if (s.actor === "ml") {
+              return `<tr class="manual"><td>${esc(s.name)}<div class="hint">Needs ${esc(s.ml_kind || "a specialised model")}</div></td>
+                <td><span class="badge ${cls}">${who}</span></td><td class="hint">Not a language model</td><td></td><td class="num hint">not priced</td></tr>`;
+            }
             if (s.actor !== "ai") {
               return `<tr class="manual"><td>${esc(s.name)}</td><td><span class="badge ${cls}">${who}</span></td><td></td><td></td><td></td></tr>`;
             }
             return `<tr class="clickable" data-step-row="${esc(s.id)}">
               <td>${esc(s.name)}<div class="hint">${isBuild(s) ? "Setup, once" : "Running"} · ${esc((USE_CASES_SHORT[s.use_case] || [s.use_case])[0])} · ${esc(s.task_type)}</div></td>
-              <td><span class="badge ${cls}">${who}</span></td>
+              <td><span class="badge ${cls}">${who}</span>${s.review === "person" ? ` <span class="badge warn" title="A wrong result could harm people, money or compliance">A person reviews</span>` : ""}</td>
               <td>${modelCell(s)}</td>
               <td class="num"><input type="number" min="0" class="volume" data-step="${esc(s.id)}" value="${stepVolume(s)}">
                 <div class="hint">${isBuild(s) ? "in total" : "a month"}</div></td>
@@ -227,10 +258,19 @@ async function renderBlueprint(name) {
     if (!event.target.closest("input")) openStep(name, row.dataset.stepRow);
   }));
 
+  if (b.measuring) {
+    const box = document.getElementById("measuring-progress");
+    watchJob({ id: b.measuring.job }, box, b.measuring.steps.length || aiSteps.length, () => renderBlueprint(name), () => {
+      box.insertAdjacentHTML("beforeend", `<button type="button" class="secondary" id="measure-again">Measure again</button>`);
+      document.getElementById("measure-again").addEventListener("click", (event) =>
+        startMeasuring(name, b.measuring.steps, event.target, box, b.measuring.steps.length || aiSteps.length, () => renderBlueprint(name)));
+    });
+  }
   const measure = document.getElementById("measure");
   if (measure) measure.addEventListener("click", () =>
     startMeasuring(name, null, measure, document.getElementById("measure-progress"), aiSteps.length, () => renderBlueprint(name)));
   document.getElementById("measure-top")?.addEventListener("click", () => {
+    if (!measure) return;
     measure.scrollIntoView({ behavior: "smooth", block: "center" });
     measure.click();
   });

@@ -1,0 +1,39 @@
+id: refund-policy-rules
+category: rule-application
+tags: [hard, retail, reasoning]
+description: Apply a refund policy with dates, sale items, defects and fees to four orders and total the refunds.
+prompt: |
+  Today is 20 March 2027. Apply this refund policy to each order and give the refund amount in EGP, then the total.
+
+  Policy:
+  - Unopened items: full refund within 14 days of delivery.
+  - Opened electronics: refund within 7 days of delivery, minus a 15% restocking fee.
+  - Items bought at a discount of 30% or more are final sale: no refund unless defective.
+  - Defective items: full refund within 30 days of delivery, including the delivery fee, with no restocking fee,
+    whether or not they were on sale.
+  - The delivery fee is refunded only for defective items.
+
+  Orders:
+  A. Wireless headphones (electronics), paid EGP 1,500, delivered 15 March, opened, working normally.
+  B. Jacket, paid EGP 800 after a 40% discount, delivered 1 March, unopened.
+  C. Blender (electronics), paid EGP 2,000 plus EGP 60 delivery, delivered 25 February, motor fails (defective).
+  D. Book, paid EGP 300, delivered 4 March, unopened.
+grader:
+  type: rubric
+  criteria:
+    - "Order A: refund of EGP 1,275 (EGP 1,500 minus the 15% restocking fee)."
+    - "Order B: no refund, because it was bought at a 40% discount and is not defective."
+    - "Order C: refund of EGP 2,060 (the price plus the delivery fee, since it is defective and within 30 days)."
+    - "Order D: no refund, because it was delivered 16 days ago, beyond the 14-day limit."
+    - States a total refund of EGP 3,335.
+reference: |
+  A. Opened electronics, delivered 5 days ago (within 7): EGP 1,500 - 15% (EGP 225) = EGP 1,275.
+  B. Bought at 40% off, so final sale, and not defective: EGP 0.
+  C. Defective, delivered 23 days ago (within 30): full price EGP 2,000 + delivery EGP 60 = EGP 2,060.
+  D. Unopened but delivered 16 days ago (more than 14): EGP 0.
+  Total: EGP 3,335.
+counterexamples:
+  - |
+    A: EGP 1,500. B: EGP 800. C: EGP 2,000. D: EGP 300. Total EGP 4,600.
+  - |
+    A: EGP 1,275. B: EGP 0. C: EGP 2,000. D: EGP 300. Total EGP 3,575.

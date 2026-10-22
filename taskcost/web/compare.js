@@ -297,8 +297,11 @@ async function startComparison(data, modelCount, button, box, endpoint = "/api/s
       onDone: (state) => { location.hash = target + state.result; },
       onError: (state) => {
         if (/^Strict mode/.test(state.error || "")) return strictRefusal(state.error, data, modelCount, button, box, endpoint);
-        box.innerHTML = `<div class="notice bad">${esc(state.error)}</div>`;
+        box.innerHTML = `<div class="notice bad">${esc(state.error)}
+          ${/^The server restarted/.test(state.error || "") ? `<div class="actions"><button type="button" class="secondary" id="run-again-lost">Run again</button></div>` : ""}</div>`;
         button.disabled = false;
+        document.getElementById("run-again-lost")?.addEventListener("click", (event) =>
+          startComparison(data, modelCount, event.target, box, endpoint));
       },
     });
   } catch (error) {

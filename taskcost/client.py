@@ -99,6 +99,7 @@ class Completion:
     cached_tokens: int
     latency_s: float
     request_id: str | None = None
+    reasoning: str = ""  # the model's visible reasoning, when the provider returns it separately
 
     def cost(self, model: ModelInfo) -> float:
         return model.pricing.cost(self.prompt_tokens, self.completion_tokens, self.cached_tokens)
@@ -249,8 +250,10 @@ class SovereignClient:
         usage = body.get("usage") or {}
         details = usage.get("prompt_tokens_details") or {}
         choices = body.get("choices") or [{}]
+        message = choices[0].get("message") or {}
         return Completion(
-            text=_message_text(choices[0].get("message") or {}),
+            text=_message_text(message),
+            reasoning=str(message.get("reasoning_content") or message.get("reasoning") or ""),
             prompt_tokens=int(usage.get("prompt_tokens") or 0),
             completion_tokens=int(usage.get("completion_tokens") or 0),
             cached_tokens=int(details.get("cached_tokens") or 0),

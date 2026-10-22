@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import itertools
+import secrets
 import json
 import re
 import sys
@@ -25,7 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .blueprint import (
-    DEFAULT_USE_CASE, ai_steps, design_blueprint, estimate_blueprint, find_step, load_blueprint, recompute_totals,
+    DEFAULT_USE_CASE, ai_steps, costliest_steps, design_blueprint, estimate_blueprint, find_step, load_blueprint, recompute_totals,
     save_blueprint, size_request, verify_blueprint, write_blueprint,
 )
 from .cache import Cache, CachedDecisions
@@ -46,12 +46,14 @@ from .user_profile import arabic_share, build_profile, valid_client, design_cont
 from .usage import backfill_from_results, blueprint_event, comparison_event, has_events, log_event
 from .sovereignty import LEVELS, accepted, apply_policy, countries, country_name, model_fit, residency_ranks
 from .report import finalize_run
-from .runner import load_attempts
+from .runner import first_error, load_attempts
 
 WEB_DIR = Path(__file__).parent / "web"
 SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
 DOCUMENT_TYPES = {".txt", ".md", ".pdf"}
 CATALOG_TTL_S = 3600
+INTERRUPTED = ("The server restarted while this was running, so it didn't finish. "
+               "Nothing more was charged after that point. Run it again to get your result.")
 HOSTING_CHECK_S = 3600
 
 
@@ -69,6 +71,8 @@ class Job:
     error: str | None = None
     phase: str = ""
     started: float = field(default_factory=time.time)
+    folder: Path | None = None  # where the job's state is saved, so it outlives a server restart
+    _saved_at: float = 0.0
 
     def write(self, text: str) -> None:
         for line in text.splitlines():
@@ -79,6 +83,27 @@ class Job:
             if match:
                 self.done, self.total = int(match[1]), int(match[2])
         del self.lines[:-300]
+        if time.time() - self._saved_at > 2:
+            self.save()
+
+    def save(self) -> None:
+        if self.folder is None:
+            return
+        self._saved_at = time.time()
+        try:
+            self.folder.mkdir(parents=True, exist_ok=True)
+            (self.folder / f"{self.id}.json").write_text(
+                json.dumps({**self.to_dict(), "started": self.started}), encoding="utf-8")
+        except OSError:
+            pass
+
+    @classmethod
+    def load(cls, path: Path) -> Job:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return cls(id=data["id"], kind=data["kind"], status=data["status"], lines=data.get("lines", []),
+                   done=data.get("done", 0), total=data.get("total", 0), result=data.get("result"),
+                   error=data.get("error"), phase=data.get("phase", ""), started=data.get("started", time.time()),
+                   folder=path.parent)
 
     def flush(self) -> None:
         pass
@@ -143,7 +168,22 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
     uploads_dir = root / "uploads"
     jobs: dict[str, Job] = {}
     running: set[asyncio.Task[None]] = set()
-    ids = itertools.count(1)
+    jobs_dir = root / ".cache" / "jobs"
+    # Jobs that were running when the server last stopped can't resume: say so, and log it for the audit.
+    for path in sorted(jobs_dir.glob("*.json")) if jobs_dir.is_dir() else []:
+        if time.time() - path.stat().st_mtime > 7 * 86400:
+            path.unlink(missing_ok=True)
+            continue
+        try:
+            old = Job.load(path)
+        except (OSError, ValueError, KeyError):
+            continue
+        if old.status == "running":
+            old.status = "error"
+            old.error = INTERRUPTED
+            old.save()
+            log_event("job_interrupted", job=old.kind, phase=old.phase, seconds=round(time.time() - old.started))
+        jobs[old.id] = old
     catalog_cache: dict[str, tuple[float, dict[str, ModelInfo]]] = {}
     cache = Cache(load_config(config_path).cache_path)
 
@@ -224,8 +264,9 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
         return models
 
     def start(kind: str, work: Callable[[Job], Awaitable[str]]) -> Job:
-        job = Job(id=str(next(ids)), kind=kind)
+        job = Job(id=f"{int(time.time())}-{secrets.token_hex(3)}", kind=kind, folder=jobs_dir)
         jobs[job.id] = job
+        job.save()
 
         async def run() -> None:
             try:
@@ -233,12 +274,15 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
                 job.status = "done"
             except Exception as exc:  # surfaced to the page, which shows the message
                 job.status = "error"
-                job.error = str(exc) or exc.__class__.__name__
+                cause = first_error(exc)
+                job.error = str(cause) or cause.__class__.__name__
                 job.write(f"Error: {job.error}")
                 if job.error.startswith("Strict mode"):
                     log_event("strict_refused", job=kind, reason=job.error[:200])
                 else:
                     log_event("job_failed", job=kind, error=job.error[:200], seconds=round(time.time() - job.started))
+            finally:
+                job.save()
 
         task = asyncio.create_task(run())
         running.add(task)
@@ -536,6 +580,12 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
             name = save_blueprint(blueprint, cfg.output_path)
             cache.put("blueprint", cache_parts, name)
             log_event("blueprint_done", client=client, **blueprint_event(blueprint, name, time.time() - job.started))
+            top = costliest_steps(blueprint, cfg.auto_measure_steps)
+            if top:
+                try:  # measure the biggest numbers for real, in the background; the plan is usable meanwhile
+                    await verify(name, steps=",".join(top), auto=True)
+                except Exception as exc:
+                    job.write(f"Automatic measuring did not start: {getattr(exc, 'detail', exc)}")
             job.phase = "done"
             return name
 
@@ -567,7 +617,7 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
                                          list(config().judge_models))}
 
     @app.post("/api/blueprints/{name}/verify")
-    async def verify(name: str, steps: str = "", helpers: str = "") -> dict[str, Any]:
+    async def verify(name: str, steps: str = "", helpers: str = "", auto: bool = False) -> dict[str, Any]:
         """Measure AI steps on a realistic example, cheapest model first (all steps, or the comma-separated ids).
         Uses the country, level and helpers the blueprint was made with."""
         only = {s for s in steps.split(",") if s} or None
@@ -588,9 +638,17 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
             job.phase = "verify"
             job.total = len(only) if only else len(ai_steps(blueprint))
             job.write("Writing a realistic example for each AI step and testing the cheapest models first...")
-            async with aclosing(backend):
-                measured = await verify_blueprint(cfg, blueprint, backend, models, cards, folder / "verification",
-                                                  log=job, only_steps=only)
+            # The plan page follows this job; the marker goes when measuring ends, whatever the outcome.
+            blueprint["measuring"] = {"job": job.id, "steps": sorted(only) if only else [], "auto": auto}
+            write_blueprint(folder, blueprint)
+            try:
+                async with aclosing(backend):
+                    measured = await verify_blueprint(cfg, blueprint, backend, models, cards, folder / "verification",
+                                                      log=job, only_steps=only)
+            finally:
+                blueprint.pop("measuring", None)
+                write_blueprint(folder, blueprint)
+            measured.pop("measuring", None)
             write_blueprint(folder, measured)
             v = measured.get("verification") or {}
             log_event("measured", run=name, steps=len(only) if only else v.get("ai_steps"),
@@ -710,7 +768,7 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
     @app.get("/api/jobs/{job_id}")
     async def get_job(job_id: str) -> dict[str, Any]:
         if job_id not in jobs:
-            raise HTTPException(404, "job not found")
+            return {"id": job_id, "status": "error", "error": INTERRUPTED, "lines": [], "phase": "", "elapsed_s": 0}
         return jobs[job_id].to_dict()
 
     @app.get("/api/results")

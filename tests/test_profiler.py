@@ -65,8 +65,8 @@ def test_tier_mapping_by_position():
     assert tier_for_class("Frontier", TIERS[:2]) == ("Balanced", "m-balanced")
 
 
-def test_library_has_ten_well_formed_tasks():
-    assert len(LIBRARY) == 10
+def test_library_has_thirteen_well_formed_tasks_three_of_them_hard():
+    assert len(LIBRARY) == 13 and sum("hard" in task.tags for task in LIBRARY) == 3
     for task in LIBRARY:
         assert task.grader["type"] == "rubric" and parse_criteria(task.grader["criteria"])
         assert task.reference and len(task.counterexamples) >= 2

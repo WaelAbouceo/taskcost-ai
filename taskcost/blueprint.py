@@ -142,7 +142,7 @@ Rules
    and scale them to the company you assume.
 3. List at most {MAX_WORKFLOWS} workflows, most relevant first, using standard names where they exist.
    A workflow request has exactly one workflow.
-4. For each workflow, list its main steps in order (4 to 8) and say who does each: "person", "system" or "ai".
+4. For each workflow, list its main steps in order (4 to 8) and say who does each: "person", "system", "ai" or "ml".
    Mark a step "ai" only where AI genuinely helps today: reading documents, classifying, matching, drafting,
    summarising, answering questions or translating. At most {MAX_AI_STEPS} AI steps per workflow.
 5. For each AI step give: task_type (one of {", ".join(TASK_TYPES)}), use_case ("chat" if a person waits for
@@ -160,16 +160,27 @@ Rules
 8. If the request is one-off work (a book, a game, a film, a campaign), its deliverables are build steps
    (chapters, scenes, assets, listings) with total_volume. Use run steps only for work that genuinely recurs
    after it is finished, such as answering readers' or players' messages.
+9. Use actor "ml" (not "ai") for steps that need a specialised model rather than a language model: anomaly
+   detection or forecasting on sensor or numeric time series, remaining-useful-life prediction, image or video
+   inspection, demand forecasting, optimisation. Give "ml_kind", a few words on the kind of model needed.
+10. For an AI step whose wrong result could harm people, the environment, money or legal standing (safety,
+   compliance, payments, medical or legal decisions), set "review": "person": a person checks it before use.
+11. "key_assumptions": the 2 or 3 assumptions that drive the cost most (usually volumes or history sizes),
+   as short phrases with their numbers.
 
 Reply with JSON only:
 {{"level": "workflow or project", "title": "short title", "summary": "two sentences",
   "assumptions": [{{"topic": "Company", "assumption": "..."}}],
+  "key_assumptions": ["about 7,200 alarms a month", "..."],
   "workflows": [{{"id": "W1", "name": "...", "description": "one sentence",
     "steps": [{{"name": "...", "actor": "person"}},
               {{"name": "...", "actor": "ai", "task_type": "extraction", "use_case": "batch", "phase": "run",
                 "monthly_volume": 1200, "instruction": "...", "criteria": ["..."]}},
               {{"name": "...", "actor": "ai", "task_type": "extraction", "use_case": "batch", "phase": "build",
-                "total_volume": 60000, "instruction": "...", "criteria": ["..."]}}]}}]}}
+                "total_volume": 60000, "instruction": "...", "criteria": ["..."]}},
+              {{"name": "...", "actor": "ml", "ml_kind": "time-series anomaly detection"}},
+              {{"name": "...", "actor": "ai", "review": "person", "task_type": "classification", "use_case": "batch",
+                "phase": "run", "monthly_volume": 5, "instruction": "...", "criteria": ["..."]}}]}}]}}
 """
 
 
@@ -202,6 +213,10 @@ def _clean(data: Any) -> dict[str, Any]:
         for s_index, step in enumerate(workflow.get("steps", []), start=1):
             actor = str(step.get("actor", "person")).lower()
             entry = {"id": f"W{w_index}.S{s_index}", "name": str(step.get("name", "")).strip(), "actor": actor}
+            if actor == "ml":
+                entry["ml_kind"] = str(step.get("ml_kind", "specialised model")).strip()
+            elif actor not in ("person", "system", "ai"):
+                entry["actor"] = actor = "person"
             if actor == "ai":
                 ai_count += 1
                 if ai_count > MAX_AI_STEPS:
@@ -219,6 +234,7 @@ def _clean(data: Any) -> dict[str, Any]:
                         **({"total_volume": volume("total_volume") or volume("monthly_volume")} if build else {}),
                         "instruction": str(step.get("instruction", "")).strip(),
                         "criteria": [str(c) for c in step.get("criteria", [])][:4],
+                        **({"review": "person"} if str(step.get("review", "")).lower() == "person" else {}),
                     })
                     if not entry["instruction"]:
                         raise ValueError(f"AI step {entry['id']} has no instruction")
@@ -238,6 +254,7 @@ def _clean(data: Any) -> dict[str, Any]:
             {"topic": str(a.get("topic", "")), "assumption": str(a.get("assumption", ""))}
             for a in data.get("assumptions", []) if isinstance(a, dict)
         ],
+        "key_assumptions": [str(a).strip() for a in data.get("key_assumptions", []) if str(a).strip()][:3],
         "workflows": workflows,
     }
 
@@ -252,7 +269,8 @@ async def estimate_blueprint(
     steps = ai_steps(blueprint)
     recommendations = await asyncio.gather(*(
         recommend_hybrid(backend, jev, f"{step['instruction']}\n\nThe result must: " + "; ".join(step.get("criteria", [])),
-                         step["use_case"], cards, escalate_at, prefer_open, min_pass_rate, residency)
+                         step["use_case"], cards, escalate_at, prefer_open, min_pass_rate, residency,
+                         min_hardness=escalate_at if step.get("review") == "person" else 0.0)
         for step in steps
     ))
     for step, rec in zip(steps, recommendations):
@@ -287,6 +305,10 @@ Given the company assumptions and the step, write:
    - Each check tests exactly ONE fact or requirement. Never join two requirements with "and".
    - Only check what the instruction asks for. Do not check fields, formats, layout or behaviour it does not mention.
    - Word each check so that any correct phrasing, format or structure passes.
+   - Never require an exact number of paragraphs, sentences, bullet points or words.
+If the instruction asks for many items at once (such as 200 test positions or 100 scenarios), the example asks
+for exactly ONE item and both answers cover only that item: the step's volume counts items, so it is measured
+per item. Keep expected_answer and alternative_answer under 400 words each.
 Reply with JSON only: {"input": "...", "expected_answer": "...", "alternative_answer": "...", "criteria": ["..."]}"""
 
 
@@ -343,7 +365,8 @@ async def generate_sample(
             "criteria": [format_tolerant(str(c)) for c in data["criteria"]][:5],
         }
 
-    reply = await chat_json(backend, model, messages, parse, max_tokens=4000,
+    # Reasoning models think before writing; a full example plus two answers needs room, or the JSON is cut off.
+    reply = await chat_json(backend, model, messages, parse, max_tokens=12000,
                             fail=lambda problem: ValueError(f"Could not write an example for {step['id']}: {problem}"))
     return reply.value, reply.cost_egp
 
@@ -417,7 +440,23 @@ async def verify_blueprint(
     with attempts_file.open("a" if only_steps else "w", encoding="utf-8") as sink:
 
         async def verify_step(workflow: dict[str, Any], step: dict[str, Any]) -> None:
+            """One step; a failure here (an example that can't be written, reviewers unavailable) is recorded on
+            the step and the other steps carry on. Only errors that stop every request end the whole run."""
+            nonlocal done
+            try:
+                await measure_step(workflow, step)
+            except FatalRunError:
+                raise
+            except Exception as exc:
+                step["measure_error"] = str(first_error(exc))[:300] or exc.__class__.__name__
+                step.setdefault("tried", [])
+                done += 1
+                print(f"[{done}/{len(to_run)}] {step['name']}: could not be measured ({step['measure_error']})", file=log)
+
+        async def measure_step(workflow: dict[str, Any], step: dict[str, Any]) -> None:
             nonlocal done, sample_cost
+            step.pop("measure_error", None)
+            step.pop("dropped_checks", None)
             async with semaphore:
                 sample, cost = await generate_sample(backend, sample_model, blueprint, step)
                 sample_cost += cost
@@ -476,6 +515,8 @@ async def verify_blueprint(
 
     records = load_attempts(run_dir)
     for _, step in steps:
+        if only_steps is not None and step["id"] not in only_steps:
+            continue  # not measured this time: keep its earlier result, or its estimate if never measured
         for entry in step.get("tried", []):
             runs = [r for r in records if r["task_id"] == step["id"] and r["model"] == entry["model"]]
             entry["cost_per_answer_egp"] = sum(r["cost_egp"] for r in runs) / len(runs) if runs else None
@@ -485,7 +526,11 @@ async def verify_blueprint(
                 c["criterion"] for r in runs for c in r.get("criteria", []) if c["required"] and not c["passed"]
             ))
         winner = next((t for t in step.get("tried", []) if t["passed"] == t["runs"]), None)
-        if not step.get("sample_check", {}).get("passed", True):
+        if winner is None:
+            winner = _winner_without_impossible_checks(step, records)
+        if step.get("measure_error") and not winner:
+            step["verdict"] = "error"
+        elif not step.get("sample_check", {}).get("passed", True):
             step["verdict"] = "no_reliable_test"
         elif winner:
             step["verdict"] = "measured"
@@ -520,6 +565,30 @@ async def verify_blueprint(
     return recompute_totals(blueprint)
 
 
+MIN_MODELS_FOR_CONSENSUS = 3
+
+
+def _winner_without_impossible_checks(step: dict[str, Any], records: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """When every model tried (at least three) fails the same check, the check is far likelier wrong than all the
+    models: drop it, and take the cheapest model that passed everything else. The dropped checks are recorded."""
+    tried = step.get("tried", [])
+    if len(tried) < MIN_MODELS_FOR_CONSENSUS:
+        return None
+    runs = [r for r in records if r["task_id"] == step["id"] and r.get("error_kind") is None]
+    failed = [{c["criterion"] for c in r.get("criteria", []) if c["required"] and not c["passed"]} for r in runs]
+    if not failed or not all(failed):
+        return None
+    impossible = set.intersection(*failed)
+    if not impossible:
+        return None
+    for entry in tried:  # cheapest first
+        model_runs = [f for r, f in zip(runs, failed) if r["model"] == entry["model"]]
+        if model_runs and all(f <= impossible for f in model_runs):
+            step["dropped_checks"] = sorted(impossible)
+            return {**entry, "passed": entry["runs"], "note": "passed every check except one every model failed"}
+    return None
+
+
 def save_blueprint(blueprint: dict[str, Any], results_dir: Path) -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     name = f"blueprint-{slug(blueprint.get('title') or blueprint['request'], 'blueprint')}-{stamp}"
@@ -530,6 +599,14 @@ def save_blueprint(blueprint: dict[str, Any], results_dir: Path) -> str:
 
 def ai_steps(blueprint: dict[str, Any]) -> list[dict[str, Any]]:
     return [s for w in blueprint["workflows"] for s in w["steps"] if s["actor"] == "ai"]
+
+
+def costliest_steps(blueprint: dict[str, Any], count: int) -> list[str]:
+    """Ids of the AI steps with the highest first-year cost (setup once, or 12 months of running)."""
+    def first_year(step: dict[str, Any]) -> float:
+        return (step.get("one_time_cost_egp") or 0.0) if is_build(step) else 12 * (step.get("monthly_cost_egp") or 0.0)
+    priced = [s for s in ai_steps(blueprint) if s.get("cost_per_answer_egp") is not None and first_year(s) > 0]
+    return [s["id"] for s in sorted(priced, key=first_year, reverse=True)[:max(count, 0)]]
 
 
 def find_step(blueprint: dict[str, Any], step_id: str, ai_only: bool = False) -> dict[str, Any] | None:
