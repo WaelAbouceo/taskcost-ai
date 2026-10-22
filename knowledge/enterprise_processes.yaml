@@ -1,0 +1,107 @@
+# Standard end-to-end enterprise processes, used to ground the blueprint designer.
+# Volumes are rough planning defaults for a mid-sized company (about 500 employees) per month.
+# They are assumptions to be adjusted, not measurements.
+
+systems:
+  ERP: [procure-to-pay, order-to-cash, record-to-report, inventory-and-fulfilment, hire-to-retire]
+  CRM: [issue-to-resolution, lead-to-deal]
+  HRMS: [hire-to-retire]
+  ITSM: [it-incident-to-resolution]
+  CLM: [contract-lifecycle]
+
+processes:
+  procure-to-pay:
+    name: Procure-to-Pay (P2P)
+    area: Purchasing and accounts payable
+    steps:
+      - {name: Purchase request raised, actor: person}
+      - {name: Request approved, actor: person}
+      - {name: Purchase order created and sent, actor: system}
+      - {name: Goods or services received, actor: person}
+      - {name: Supplier invoice read and captured, actor: ai, volume: 1200}
+      - {name: Invoice matched to purchase order and receipt, actor: ai, volume: 1200}
+      - {name: Mismatches flagged and supplier queried, actor: ai, volume: 250}
+      - {name: Payment approved and made, actor: system}
+
+  order-to-cash:
+    name: Order-to-Cash (O2C)
+    area: Sales orders and accounts receivable
+    steps:
+      - {name: Customer order received by email or portal, actor: ai, volume: 1500}
+      - {name: Order checked and entered, actor: system}
+      - {name: Goods shipped, actor: person}
+      - {name: Customer invoice issued, actor: system}
+      - {name: Payment reminders written, actor: ai, volume: 250}
+      - {name: Customer billing questions answered, actor: ai, volume: 800}
+      - {name: Payment received and matched, actor: system}
+
+  record-to-report:
+    name: Record-to-Report (R2R)
+    area: Accounting close and reporting
+    steps:
+      - {name: Transactions posted, actor: system}
+      - {name: Bank reconciliation exceptions explained, actor: ai, volume: 300}
+      - {name: Month-end close checklist, actor: person}
+      - {name: Budget variances explained, actor: ai, volume: 40}
+      - {name: Management report commentary written, actor: ai, volume: 2}
+      - {name: Report approved, actor: person}
+
+  inventory-and-fulfilment:
+    name: Inventory and fulfilment
+    area: Warehouse and supply chain
+    steps:
+      - {name: Goods received and checked, actor: person}
+      - {name: Stock exceptions explained, actor: ai, volume: 150}
+      - {name: Replenishment orders proposed, actor: system}
+      - {name: Delivery status updates sent to customers, actor: ai, volume: 1500}
+      - {name: Damage and return claims assessed, actor: ai, volume: 120}
+
+  hire-to-retire:
+    name: Hire-to-Retire (H2R)
+    area: Human resources
+    steps:
+      - {name: Job description written, actor: ai, volume: 8}
+      - {name: CVs screened against the job, actor: ai, volume: 300}
+      - {name: Interviews and offer, actor: person}
+      - {name: Onboarding pack prepared, actor: ai, volume: 12}
+      - {name: Employee policy questions answered, actor: ai, volume: 600}
+      - {name: Payroll run, actor: system}
+
+  issue-to-resolution:
+    name: Issue-to-Resolution
+    area: Customer service
+    steps:
+      - {name: Customer message received, actor: system}
+      - {name: Message classified and routed, actor: ai, volume: 3000}
+      - {name: Reply drafted following policy, actor: ai, volume: 3000}
+      - {name: Escalations handled, actor: person}
+      - {name: Case summarised and closed, actor: ai, volume: 3000}
+
+  lead-to-deal:
+    name: Lead-to-Deal
+    area: Sales
+    steps:
+      - {name: Lead captured, actor: system}
+      - {name: Lead qualified, actor: ai, volume: 400}
+      - {name: Follow-up emails written, actor: ai, volume: 800}
+      - {name: Proposal drafted, actor: ai, volume: 30}
+      - {name: Negotiation and signature, actor: person}
+
+  it-incident-to-resolution:
+    name: IT incident-to-resolution
+    area: IT helpdesk
+    steps:
+      - {name: Incident logged, actor: system}
+      - {name: Incident classified and prioritised, actor: ai, volume: 900}
+      - {name: Known fix suggested to the user, actor: ai, volume: 900}
+      - {name: Engineer resolves complex incidents, actor: person}
+
+  contract-lifecycle:
+    name: Contract lifecycle
+    area: Legal
+    steps:
+      - {name: Contract requested, actor: person}
+      - {name: Contract drafted from a template, actor: ai, volume: 30}
+      - {name: Contract reviewed for risky clauses, actor: ai, volume: 30}
+      - {name: Negotiation and approval, actor: person}
+      - {name: Key dates and obligations extracted, actor: ai, volume: 30}

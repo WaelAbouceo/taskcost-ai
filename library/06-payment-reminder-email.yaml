@@ -1,0 +1,50 @@
+id: payment-reminder-email
+category: business-email
+description: Write a polite but firm overdue-payment reminder to a client, using given facts only.
+prompt: |
+  Write an email from Sherif Hamdy, Accounts Receivable Manager at Nile Cloud Systems, to Mariam Farouk,
+  Finance Manager at Delta Logistics, reminding her about an overdue invoice. Facts:
+  - Invoice INV-7781 for EGP 86,400 was due on 30 September 2026 and is now 21 days overdue.
+  - Under the contract, overdue amounts bear late interest of 1% per month.
+  - Ask for payment by 25 October 2026, or a reply with the expected payment date.
+  - Mariam can reach Sherif on 0100 555 0142.
+  Keep it polite but firm, with a subject line, and about 120 to 180 words. Do not add any facts.
+grader:
+  type: rubric
+  criteria:
+    - Includes a subject line.
+    - Quotes invoice INV-7781 and the amount EGP 86,400.
+    - States that the invoice was due on 30 September 2026 and is overdue.
+    - Mentions late interest of 1% per month under the contract.
+    - Asks for payment by 25 October 2026 or a reply with the expected payment date.
+    - Gives Sherif's phone number 0100 555 0142.
+    - Is polite but firm in tone.
+    - Adds no facts that were not given (no new amounts, dates or penalties).
+    - text: Is roughly 120 to 180 words long.
+      required: false
+reference: |
+  Subject: Overdue invoice INV-7781 (EGP 86,400)
+
+  Dear Mariam,
+
+  I hope you are well. I am writing about invoice INV-7781 for EGP 86,400, which was due on 30 September 2026
+  and is now 21 days overdue. As set out in our contract, overdue amounts bear late interest of 1% per month.
+
+  We would appreciate payment by 25 October 2026. If that is not possible, please reply with the date on which
+  you expect to make the payment, so that we can update our records.
+
+  If there is any issue with the invoice, I am happy to help; you can reach me directly on 0100 555 0142.
+
+  Thank you for your prompt attention to this matter.
+
+  Kind regards,
+  Sherif Hamdy
+  Accounts Receivable Manager, Nile Cloud Systems
+counterexamples:
+  - |
+    Subject: Invoice reminder
+
+    Dear Mariam, invoice INV-7781 for EGP 86,400 is overdue. Please pay by 25 October 2026 or we will suspend
+    your service and add a 5% penalty. Regards, Sherif
+  - |
+    Hi Mariam, just a friendly note that invoice INV-7781 might still be open, no rush at all. Thanks, Sherif

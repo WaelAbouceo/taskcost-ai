@@ -1,0 +1,32 @@
+id: sales-data-question
+category: data-analysis
+description: Answer business questions from a sales table, with traps between relative and absolute growth.
+prompt: |
+  Using the monthly sales below (EGP thousands), answer:
+  1. Which region had the highest percentage growth from Q1 to Q2 2026, and by how much?
+  2. Which region had the largest absolute increase from Q1 to Q2, and by how much?
+  3. What was total company revenue in Q2 2026?
+
+  | Region      | Jan | Feb | Mar | Apr | May | Jun |
+  |-------------|----:|----:|----:|----:|----:|----:|
+  | Cairo       | 420 | 410 | 450 | 470 | 480 | 500 |
+  | Alexandria  | 210 | 205 | 215 | 250 | 260 | 270 |
+  | Delta       | 150 | 160 | 170 | 175 | 180 | 185 |
+  | Upper Egypt |  90 |  95 | 100 | 120 | 125 | 130 |
+grader:
+  type: rubric
+  criteria:
+    - Names Upper Egypt as the region with the highest percentage growth.
+    - Gives Upper Egypt's growth as about 31.6% (285 to 375).
+    - Names Cairo as the region with the largest absolute increase.
+    - Gives Cairo's increase as 170 thousand EGP (1,280 to 1,450).
+    - Gives total Q2 2026 revenue as 3,145 thousand EGP (about EGP 3.15 million).
+reference: |
+  1. Upper Egypt: Q1 285 to Q2 375, growth of about 31.6%.
+  2. Cairo: Q1 1,280 to Q2 1,450, an increase of 170 (EGP thousands).
+  3. Total Q2 revenue: 1,450 + 780 + 540 + 375 = 3,145 (EGP thousands), about EGP 3.15 million.
+counterexamples:
+  - |
+    1. Alexandria, +23.8%. 2. Alexandria, +150. 3. 3,145.
+  - |
+    1. Upper Egypt, +31.6%. 2. Alexandria, +150. 3. 3,045.

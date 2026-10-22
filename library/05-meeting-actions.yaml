@@ -1,0 +1,40 @@
+id: meeting-actions
+category: meeting-notes
+description: Turn a meeting transcript into action items, with a reassigned owner and a parked idea.
+prompt: |
+  List the action items agreed in this meeting, each with its owner and deadline.
+  Leave out anything that was parked or rejected.
+
+  ---
+  Hala (Ops Director): We need the RFP for the new warehouse system out by Thursday. Omar, can you draft it?
+  Omar: I'm on leave from tomorrow until the 20th.
+  Hala: Then Nadia, please take the RFP instead, still for Thursday.
+  Nadia: Fine, Thursday.
+  Karim: I'll send the vendor shortlist to procurement by Monday.
+  Laila: Should we also rebrand the customer portal while we're at it?
+  Hala: Not this quarter, let's revisit it in Q3.
+  Hala: Laila, please book the site visit to the Alexandria warehouse for next week.
+  Laila: Will do.
+  ---
+grader:
+  type: rubric
+  criteria:
+    - Assigns the RFP draft to Nadia, due Thursday.
+    - Does not assign the RFP to Omar.
+    - Includes Karim sending the vendor shortlist to procurement by Monday.
+    - Includes Laila booking the Alexandria warehouse site visit for next week.
+    - Does not list the customer portal rebrand as an action item.
+reference: |
+  1. Nadia: draft the RFP for the new warehouse system (by Thursday)
+  2. Karim: send the vendor shortlist to procurement (by Monday)
+  3. Laila: book the site visit to the Alexandria warehouse (next week)
+counterexamples:
+  - |
+    1. Omar: draft the RFP (Thursday)
+    2. Karim: vendor shortlist to procurement (Monday)
+    3. Laila: book the Alexandria site visit (next week)
+  - |
+    1. Nadia: draft the RFP (Thursday)
+    2. Karim: vendor shortlist (Monday)
+    3. Laila: Alexandria site visit (next week)
+    4. Laila: rebrand the customer portal (Q3)

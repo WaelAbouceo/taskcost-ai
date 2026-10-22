@@ -1,0 +1,125 @@
+- id: extraction-invoice-fields
+  category: extraction
+  description: Pull the key fields from a supplier invoice, including a computed due date.
+  prompt: |
+    Extract the key details from this invoice for our accounts payable team: invoice number,
+    vendor, customer, issue date, due date (from the payment terms), VAT amount, total and currency.
+
+    ---
+    NILE OFFICE SUPPLIES S.A.E.
+    Tax Reg. 512-884-207
+    Invoice No: INV-2026-0417
+    Issue date: 14/09/2026
+    Bill to: Delta Logistics Ltd.
+
+    Items:
+      A4 paper, 40 boxes x 310.00        12,400.00
+      Toner cartridges, 6 x 650.00        3,900.00
+    Subtotal                             16,300.00
+    VAT 14%                               2,282.00
+    Total due                       EGP  18,582.00
+
+    Payment terms: Net 30 days from issue date.
+    ---
+  grader:
+    type: rubric
+    criteria:
+      - Gives the invoice number as INV-2026-0417.
+      - Identifies the vendor as Nile Office Supplies and the customer as Delta Logistics.
+      - Gives the issue date as 14 September 2026, in any date format.
+      - Gives the due date as 14 October 2026, which is 30 days after the issue date.
+      - Gives the VAT as 2,282 EGP and the total due as 18,582 EGP (not the 16,300 subtotal).
+  reference: |
+    - Invoice number: INV-2026-0417
+    - Vendor: Nile Office Supplies S.A.E.
+    - Customer: Delta Logistics Ltd.
+    - Issue date: 2026-09-14
+    - Due date: 2026-10-14 (Net 30)
+    - VAT (14%): 2,282.00
+    - Total: 18,582.00
+    - Currency: EGP
+  counterexamples:
+    - |
+      Invoice INV-2026-0417 from Nile Office Supplies to Delta Logistics, issued 14 September 2026,
+      due 14 October 2026. VAT 2,282 EGP. Total 16,300 EGP.
+    - |
+      Invoice number INV-2026-0417; vendor Nile Office Supplies S.A.E.; customer Delta Logistics Ltd.;
+      issued 2026-09-14; due 2026-09-14; VAT EGP 2,282; total EGP 18,582.
+
+- id: extraction-contract-terms
+  category: extraction
+  description: Summarise the commercial terms of a services agreement clause.
+  prompt: |
+    Summarise the key commercial terms of this contract excerpt for a deal review: effective date,
+    initial term, renewal, notice period, annual fee and governing law.
+
+    ---
+    This Master Services Agreement is signed on 3 February 2026 and becomes effective on the
+    first day of the calendar month following signature. The initial term is twenty-four (24)
+    months. Thereafter the Agreement renews automatically for successive twelve (12) month
+    periods unless either party gives at least ninety (90) days' written notice before the end
+    of the then-current term. The Client shall pay EGP 145,000 per calendar quarter, in advance.
+    This Agreement is governed by the laws of the Arab Republic of Egypt, and disputes shall be
+    referred to arbitration at CRCICA in Cairo.
+    ---
+  grader:
+    type: rubric
+    criteria:
+      - States the effective date as 1 March 2026, not the 3 February signing date.
+      - States an initial term of 24 months with automatic renewal for 12-month periods.
+      - States that at least 90 days' written notice before the end of the current term is needed to stop renewal.
+      - States the annual fee as EGP 580,000 (four quarterly payments of 145,000).
+      - States that the agreement is governed by Egyptian law.
+  reference: |
+    - Effective date: 1 March 2026 (first day of the month after signature on 3 February 2026)
+    - Initial term: 24 months
+    - Renewal: automatic, for successive 12-month periods
+    - Notice: at least 90 days' written notice before the end of the current term
+    - Annual fee: EGP 580,000 (EGP 145,000 per quarter, paid in advance)
+    - Governing law: Egypt, with CRCICA arbitration in Cairo
+  counterexamples:
+    - |
+      Effective 3 February 2026 for 24 months, renewing yearly unless 90 days' notice is given.
+      Fee EGP 145,000 per year. Egyptian law applies.
+    - |
+      Effective 1 March 2026; 24-month initial term, then 12-month renewals; 90 days' notice;
+      annual fee EGP 145,000; governed by Egyptian law.
+
+- id: extraction-meeting-actions
+  category: extraction
+  description: Turn a meeting transcript into action items, leaving out parked ideas.
+  prompt: |
+    Write the action items from this meeting as a short list with an owner and deadline for each.
+    Leave out anything that was parked or rejected.
+
+    ---
+    Mona (PM): Karim, can you send the revised pricing deck to Delta Logistics by Thursday?
+    Karim: Yes, Thursday works.
+    Sara: I can't finish the cost report until I have the Q3 usage numbers.
+    Mona: Ahmed, please pull the Q3 usage numbers for Sara by Tuesday.
+    Ahmed: Will do.
+    Mona: And I'll book the review meeting with their CFO for next week.
+    Karim: Should we also redesign the website pricing page?
+    Mona: Not now, let's park that until January.
+    ---
+  grader:
+    type: rubric
+    criteria:
+      - Includes Karim sending the revised pricing deck to Delta Logistics by Thursday.
+      - Includes Ahmed pulling the Q3 usage numbers for Sara by Tuesday.
+      - Includes Mona booking the review meeting with the CFO for next week.
+      - Does not list the website pricing page redesign as an action item (noting that it was parked is fine).
+  reference: |
+    1. Karim: send the revised pricing deck to Delta Logistics (by Thursday)
+    2. Ahmed: pull the Q3 usage numbers for Sara (by Tuesday)
+    3. Mona: book the review meeting with Delta Logistics' CFO (next week)
+  counterexamples:
+    - |
+      1. Karim: send the pricing deck to Delta Logistics, Thursday
+      2. Ahmed: Q3 usage numbers for Sara, Tuesday
+      3. Mona: book CFO review, next week
+      4. Karim: redesign the website pricing page, January
+    - |
+      1. Karim: send the revised pricing deck by Thursday
+      2. Sara: pull the Q3 usage numbers by Tuesday
+      3. Mona: book the CFO review meeting next week

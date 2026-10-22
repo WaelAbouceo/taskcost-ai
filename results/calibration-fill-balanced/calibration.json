@@ -1,0 +1,499 @@
+{
+  "tiers": [
+    {
+      "tier": "Balanced",
+      "model": "gpt-5.4-mini"
+    }
+  ],
+  "tasks": [
+    {
+      "task_id": "invoice-extraction",
+      "category": "extraction",
+      "pick": "Balanced",
+      "optimal": "Balanced",
+      "verdict": "right",
+      "pick_works": true,
+      "results": {
+        "Balanced": {
+          "passed": 3,
+          "runs": 3,
+          "cost_per_answer_egp": 0.048117748200000005
+        }
+      },
+      "pick_cost_egp": 0.048117748200000005,
+      "optimal_cost_egp": 0.048117748200000005,
+      "profile": {
+        "tier_class": "Thinking",
+        "size": "medium",
+        "model_type": "reasoning",
+        "language": "English",
+        "context": "standard",
+        "work_type": "extraction",
+        "scores": {
+          "reasoning": 1.87,
+          "error_cost": 1.99,
+          "writing_quality": 0.0,
+          "expertise": 0.99,
+          "constraints": 1.91
+        },
+        "reasons": [
+          "Reasoning 1.9/3 with high error cost: needs a reasoning model",
+          "Moderate demands on writing, rules or knowledge: needs a medium model"
+        ],
+        "borderline": [],
+        "measured": {
+          "arabic_share": 0.0,
+          "input_tokens_estimate": 224,
+          "characters": 897
+        },
+        "answers": {
+          "work_type": {
+            "type": "choice",
+            "choice": "extraction",
+            "probabilities": {
+              "extraction": 1,
+              "classification": 0,
+              "calculation": 0,
+              "rule_application": 0,
+              "summarization": 0,
+              "translation": 0,
+              "writing": 0,
+              "question_answering": 0
+            },
+            "confidence": 1
+          },
+          "reasoning": {
+            "type": "score",
+            "score": 1.87,
+            "legend": {
+              "0": "None: the answer is stated directly or only needs rewording",
+              "1": "Light: one simple inference or one obvious calculation",
+              "2": "Moderate: several dependent steps, such as date arithmetic, percentages or applying several rules",
+              "3": "Heavy: long chains of logic, many interacting rules, edge cases or traps"
+            },
+            "probabilities": {
+              "0": 0,
+              "1": 0.13,
+              "2": 0.87,
+              "3": 0
+            },
+            "confidence": 0.87
+          },
+          "error_cost": {
+            "type": "score",
+            "score": 1.99,
+            "legend": {
+              "0": "Low: a draft that a person will edit before it is used",
+              "1": "Medium: it should be correct, and mistakes would be noticed and fixed",
+              "2": "High: exact values, money, legal or compliance consequences"
+            },
+            "probabilities": {
+              "0": 0,
+              "1": 0,
+              "2": 1
+            },
+            "confidence": 1
+          },
+          "writing_quality": {
+            "type": "score",
+            "score": 0,
+            "legend": {
+              "0": "None: structured or factual output where wording does not matter",
+              "1": "Basic: clear and correct plain text",
+              "2": "High: tone, empathy, persuasion or polish matter"
+            },
+            "probabilities": {
+              "0": 1,
+              "1": 0,
+              "2": 0
+            },
+            "confidence": 1
+          },
+          "expertise": {
+            "type": "score",
+            "score": 0.99,
+            "legend": {
+              "0": "General: everyday knowledge",
+              "1": "Business: common business practice",
+              "2": "Specialist: legal, financial, medical or technical expertise"
+            },
+            "probabilities": {
+              "0": 0.02,
+              "1": 0.97,
+              "2": 0.01
+            },
+            "confidence": 0.95
+          },
+          "constraints": {
+            "type": "score",
+            "score": 1.91,
+            "legend": {
+              "0": "Few: one or two simple instructions",
+              "1": "Several: a handful of requirements",
+              "2": "Many: many requirements that must all be met at once"
+            },
+            "probabilities": {
+              "0": 0,
+              "1": 0.09,
+              "2": 0.91
+            },
+            "confidence": 0.86
+          },
+          "arabic_output": {
+            "type": "noul",
+            "noul": 0.04
+          },
+          "dialect": {
+            "type": "noul",
+            "noul": 0.01
+          }
+        },
+        "cost_egp": 0.0029217734,
+        "latency_s": 0.83,
+        "model": "jev-1.13"
+      }
+    },
+    {
+      "task_id": "sales-data-question",
+      "category": "data-analysis",
+      "pick": "Balanced",
+      "optimal": "Balanced",
+      "verdict": "right",
+      "pick_works": true,
+      "results": {
+        "Balanced": {
+          "passed": 3,
+          "runs": 3,
+          "cost_per_answer_egp": 0.1452794097
+        }
+      },
+      "pick_cost_egp": 0.1452794097,
+      "optimal_cost_egp": 0.1452794097,
+      "profile": {
+        "tier_class": "Thinking",
+        "size": "medium",
+        "model_type": "reasoning",
+        "language": "English",
+        "context": "standard",
+        "work_type": "calculation",
+        "scores": {
+          "reasoning": 2.0,
+          "error_cost": 1.39,
+          "writing_quality": 0.07,
+          "expertise": 0.54,
+          "constraints": 1.02
+        },
+        "reasons": [
+          "Reasoning 2.0/3: needs a reasoning model",
+          "Moderate demands on writing, rules or knowledge: needs a medium model"
+        ],
+        "borderline": [],
+        "measured": {
+          "arabic_share": 0.0,
+          "input_tokens_estimate": 145,
+          "characters": 582
+        },
+        "answers": {
+          "work_type": {
+            "type": "choice",
+            "choice": "calculation",
+            "probabilities": {
+              "extraction": 0,
+              "classification": 0,
+              "calculation": 0.76,
+              "rule_application": 0,
+              "summarization": 0,
+              "translation": 0,
+              "writing": 0,
+              "question_answering": 0.24
+            },
+            "confidence": 0.73
+          },
+          "reasoning": {
+            "type": "score",
+            "score": 2,
+            "legend": {
+              "0": "None: the answer is stated directly or only needs rewording",
+              "1": "Light: one simple inference or one obvious calculation",
+              "2": "Moderate: several dependent steps, such as date arithmetic, percentages or applying several rules",
+              "3": "Heavy: long chains of logic, many interacting rules, edge cases or traps"
+            },
+            "probabilities": {
+              "0": 0,
+              "1": 0,
+              "2": 1,
+              "3": 0
+            },
+            "confidence": 1
+          },
+          "error_cost": {
+            "type": "score",
+            "score": 1.39,
+            "legend": {
+              "0": "Low: a draft that a person will edit before it is used",
+              "1": "Medium: it should be correct, and mistakes would be noticed and fixed",
+              "2": "High: exact values, money, legal or compliance consequences"
+            },
+            "probabilities": {
+              "0": 0.04,
+              "1": 0.53,
+              "2": 0.43
+            },
+            "confidence": 0.3
+          },
+          "writing_quality": {
+            "type": "score",
+            "score": 0.07,
+            "legend": {
+              "0": "None: structured or factual output where wording does not matter",
+              "1": "Basic: clear and correct plain text",
+              "2": "High: tone, empathy, persuasion or polish matter"
+            },
+            "probabilities": {
+              "0": 0.93,
+              "1": 0.07,
+              "2": 0
+            },
+            "confidence": 0.9
+          },
+          "expertise": {
+            "type": "score",
+            "score": 0.54,
+            "legend": {
+              "0": "General: everyday knowledge",
+              "1": "Business: common business practice",
+              "2": "Specialist: legal, financial, medical or technical expertise"
+            },
+            "probabilities": {
+              "0": 0.46,
+              "1": 0.54,
+              "2": 0
+            },
+            "confidence": 0.31
+          },
+          "constraints": {
+            "type": "score",
+            "score": 1.02,
+            "legend": {
+              "0": "Few: one or two simple instructions",
+              "1": "Several: a handful of requirements",
+              "2": "Many: many requirements that must all be met at once"
+            },
+            "probabilities": {
+              "0": 0,
+              "1": 0.98,
+              "2": 0.02
+            },
+            "confidence": 0.97
+          },
+          "arabic_output": {
+            "type": "noul",
+            "noul": 0.11
+          },
+          "dialect": {
+            "type": "noul",
+            "noul": 0.03
+          }
+        },
+        "cost_egp": 0.0028600284000000003,
+        "latency_s": 0.88,
+        "model": "jev-1.13"
+      }
+    },
+    {
+      "task_id": "hr-policy-question",
+      "category": "policy-qa",
+      "pick": "Balanced",
+      "optimal": null,
+      "verdict": "none_passed",
+      "pick_works": false,
+      "results": {
+        "Balanced": {
+          "passed": 2,
+          "runs": 3,
+          "cost_per_answer_egp": 0.0470592484
+        }
+      },
+      "pick_cost_egp": 0.0470592484,
+      "optimal_cost_egp": null,
+      "profile": {
+        "tier_class": "Thinking",
+        "size": "medium",
+        "model_type": "reasoning",
+        "language": "English",
+        "context": "standard",
+        "work_type": "question_answering",
+        "scores": {
+          "reasoning": 1.64,
+          "error_cost": 1.93,
+          "writing_quality": 0.58,
+          "expertise": 0.62,
+          "constraints": 1.34
+        },
+        "reasons": [
+          "Reasoning 1.6/3 with high error cost: needs a reasoning model",
+          "Moderate demands on writing, rules or knowledge: needs a medium model"
+        ],
+        "borderline": [
+          "Reasoning is 1.64, close to the 1.6 threshold"
+        ],
+        "measured": {
+          "arabic_share": 0.0,
+          "input_tokens_estimate": 276,
+          "characters": 1106
+        },
+        "answers": {
+          "work_type": {
+            "type": "choice",
+            "choice": "question_answering",
+            "probabilities": {
+              "extraction": 0,
+              "classification": 0,
+              "calculation": 0,
+              "rule_application": 0.3,
+              "summarization": 0,
+              "translation": 0,
+              "writing": 0,
+              "question_answering": 0.7
+            },
+            "confidence": 0.66
+          },
+          "reasoning": {
+            "type": "score",
+            "score": 1.64,
+            "legend": {
+              "0": "None: the answer is stated directly or only needs rewording",
+              "1": "Light: one simple inference or one obvious calculation",
+              "2": "Moderate: several dependent steps, such as date arithmetic, percentages or applying several rules",
+              "3": "Heavy: long chains of logic, many interacting rules, edge cases or traps"
+            },
+            "probabilities": {
+              "0": 0.02,
+              "1": 0.32,
+              "2": 0.66,
+              "3": 0
+            },
+            "confidence": 0.64
+          },
+          "error_cost": {
+            "type": "score",
+            "score": 1.93,
+            "legend": {
+              "0": "Low: a draft that a person will edit before it is used",
+              "1": "Medium: it should be correct, and mistakes would be noticed and fixed",
+              "2": "High: exact values, money, legal or compliance consequences"
+            },
+            "probabilities": {
+              "0": 0.01,
+              "1": 0.06,
+              "2": 0.9299999999999999
+            },
+            "confidence": 0.88
+          },
+          "writing_quality": {
+            "type": "score",
+            "score": 0.58,
+            "legend": {
+              "0": "None: structured or factual output where wording does not matter",
+              "1": "Basic: clear and correct plain text",
+              "2": "High: tone, empathy, persuasion or polish matter"
+            },
+            "probabilities": {
+              "0": 0.42,
+              "1": 0.58,
+              "2": 0
+            },
+            "confidence": 0.37
+          },
+          "expertise": {
+            "type": "score",
+            "score": 0.62,
+            "legend": {
+              "0": "General: everyday knowledge",
+              "1": "Business: common business practice",
+              "2": "Specialist: legal, financial, medical or technical expertise"
+            },
+            "probabilities": {
+              "0": 0.4,
+              "1": 0.58,
+              "2": 0.02
+            },
+            "confidence": 0.37
+          },
+          "constraints": {
+            "type": "score",
+            "score": 1.34,
+            "legend": {
+              "0": "Few: one or two simple instructions",
+              "1": "Several: a handful of requirements",
+              "2": "Many: many requirements that must all be met at once"
+            },
+            "probabilities": {
+              "0": 0,
+              "1": 0.66,
+              "2": 0.34
+            },
+            "confidence": 0.49
+          },
+          "arabic_output": {
+            "type": "noul",
+            "noul": 0.05
+          },
+          "dialect": {
+            "type": "noul",
+            "noul": 0.01
+          }
+        },
+        "cost_egp": 0.0029588204,
+        "latency_s": 0.78,
+        "model": "jev-1.13"
+      }
+    }
+  ],
+  "right": 2,
+  "too_cheap": 0,
+  "too_expensive": 0,
+  "none_passed": 1,
+  "pick_works": 2,
+  "pick_cost_egp": 0.1933971579,
+  "optimal_cost_egp": 0.1933971579,
+  "profiler_cost_egp": 0.008740622200000001,
+  "judge_cost_egp": 0.3874933638,
+  "model_cost_egp": 0.7213692189,
+  "truncated": [],
+  "profiler_model": "jev-1.13",
+  "judge_models": [
+    "jev-1.13",
+    "gpt-6-luna-decisions",
+    "claude-haiku-5.5"
+  ],
+  "trials": 3,
+  "full": false,
+  "started_at": "2026-10-18T14:15:37.514817+00:00",
+  "pricing_egp": {
+    "jev-1.13": {
+      "modality": "decision",
+      "input_per_1m_egp": 2.4698,
+      "output_per_1m_egp": 0.0,
+      "cache_read_per_1m_egp": null
+    },
+    "gpt-6-luna-decisions": {
+      "modality": "decision",
+      "input_per_1m_egp": 5.8806,
+      "output_per_1m_egp": 0.0,
+      "cache_read_per_1m_egp": null
+    },
+    "claude-haiku-5.5": {
+      "modality": "chat",
+      "input_per_1m_egp": 5.8806,
+      "output_per_1m_egp": 29.4028,
+      "cache_read_per_1m_egp": 0.5881
+    },
+    "gpt-5.4-mini": {
+      "modality": "chat",
+      "input_per_1m_egp": 44.1043,
+      "output_per_1m_egp": 264.6255,
+      "cache_read_per_1m_egp": 4.4104
+    }
+  }
+}

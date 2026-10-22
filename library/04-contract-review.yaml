@@ -1,0 +1,46 @@
+id: contract-review
+category: contract-review
+description: Review a supply agreement for the buyer, with commitment calculations and risky clauses.
+prompt: |
+  You are reviewing this supply agreement for the Buyer. Answer:
+  1. What is the Buyer's minimum annual spend commitment in EGP?
+  2. If the Buyer orders only 30,000 units in a month, how much shortfall payment is due for that month?
+  3. Which clauses are unfavourable to the Buyer, and why? List the most important ones.
+
+  ---
+  SUPPLY AGREEMENT, signed 15 January 2027, between Cairo Fresh Foods S.A.E. (the "Buyer") and
+  Delta Packaging LLC (the "Supplier").
+  1. Term. Effective on signature for an initial term of 18 months, renewing automatically for
+     12-month periods unless either party gives at least 60 days' written notice before the end of a term.
+  2. Price. EGP 2.40 per unit.
+  3. Minimum volume. The Buyer shall order at least 50,000 units per calendar month. For any month in
+     which the Buyer orders fewer units, the Buyer shall pay the Supplier 50% of the unit price for each
+     unit below the minimum.
+  4. Price changes. The Supplier may increase the unit price by up to 10% at any time by giving the
+     Buyer 30 days' written notice.
+  5. Payment. Invoices are payable within 60 days of the invoice date.
+  6. Liability. The Supplier's total liability is limited to EGP 500,000. The Buyer's liability is not limited.
+  7. Termination. The Buyer may not terminate this Agreement for convenience.
+  8. Law. Egyptian law; the courts of Cairo have jurisdiction.
+  ---
+grader:
+  type: rubric
+  criteria:
+    - States the minimum annual spend commitment as EGP 1,440,000 (50,000 units x EGP 2.40 x 12 months).
+    - States the shortfall payment as EGP 24,000 (20,000 units short x EGP 1.20).
+    - Flags that the Supplier can raise prices by up to 10% at any time on 30 days' notice.
+    - Flags that liability is one-sided (the Supplier's is capped at EGP 500,000, the Buyer's is unlimited).
+    - Flags that the Buyer cannot terminate for convenience while bound by the minimum volume.
+    - Does not misstate any clause of the agreement.
+reference: |
+  1. Minimum annual spend: 50,000 units x EGP 2.40 x 12 = EGP 1,440,000.
+  2. Shortfall for a 30,000-unit month: 20,000 units x 50% of EGP 2.40 (EGP 1.20) = EGP 24,000.
+  3. Unfavourable clauses: the Supplier can raise prices by up to 10% at any time on 30 days' notice (clause 4);
+     liability is one-sided, with the Supplier capped at EGP 500,000 and the Buyer unlimited (clause 6);
+     the Buyer cannot terminate for convenience (clause 7) while committed to a monthly minimum with shortfall
+     payments (clause 3), and the agreement renews automatically unless 60 days' notice is given (clause 1).
+counterexamples:
+  - |
+    1. EGP 120,000 per year. 2. EGP 48,000. 3. The price increase clause and the one-sided liability.
+  - |
+    1. EGP 1,440,000. 2. EGP 24,000. 3. Payment terms of 60 days are unfavourable; otherwise the agreement is balanced.

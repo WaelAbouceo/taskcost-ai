@@ -1,0 +1,72 @@
+- id: reasoning-regional-revenue
+  category: reasoning
+  description: Filter and sum a small orders table by region, quarter and status.
+  prompt: |
+    Using the orders below, what was the total completed revenue for the Cairo region in Q2 2026
+    (April 1 to June 30 inclusive)? Refunded orders do not count. Say which orders you included.
+
+    | order_id | region     | date       | status    | amount_egp |
+    |----------|------------|------------|-----------|-----------:|
+    | 1001     | Cairo      | 2026-03-28 | completed |     12,400 |
+    | 1002     | Alexandria | 2026-04-02 | completed |      8,150 |
+    | 1003     | Cairo      | 2026-04-15 | completed |     15,300 |
+    | 1004     | Giza       | 2026-05-09 | completed |      6,720 |
+    | 1005     | Cairo      | 2026-05-21 | completed |      9,880 |
+    | 1006     | Cairo      | 2026-06-30 | completed |      4,500 |
+    | 1007     | Alexandria | 2026-06-11 | completed |     11,240 |
+    | 1008     | Cairo      | 2026-07-01 | completed |      7,900 |
+    | 1009     | Cairo      | 2026-05-03 | refunded  |      3,200 |
+  grader:
+    type: rubric
+    criteria:
+      - States the total as 29,680 EGP.
+      - Includes exactly orders 1003, 1005 and 1006.
+  reference: |
+    Total completed Cairo revenue in Q2 2026: 29,680 EGP, from orders 1003 (15,300), 1005 (9,880)
+    and 1006 (4,500). Excluded: 1001 and 1008 (outside Q2) and 1009 (refunded).
+  counterexamples:
+    - |
+      29,680 + 3,200 = 32,880 EGP, from orders 1003, 1005, 1006 and 1009.
+    - |
+      Orders 1003, 1005, 1006 and 1008 give 37,580 EGP.
+
+- id: reasoning-expense-policy
+  category: reasoning
+  description: Apply a travel expense policy to a batch of claims.
+  prompt: |
+    Apply the expense policy to the claims and list every claim that violates at least one rule.
+
+    Policy:
+    1. Meals: at most 600 EGP per person.
+    2. Taxi or ride-hailing: at most 400 EGP per trip.
+    3. Hotel: at most 3,000 EGP per night.
+    4. Alcohol is never reimbursable.
+    5. Any single expense above 2,000 EGP needs a receipt.
+
+    Claims:
+    C1: Client lunch, 2 people, 1,100 EGP, receipt attached.
+    C2: Taxi to the airport, 450 EGP, receipt attached.
+    C3: Hotel, 2 nights, 5,800 EGP total, receipt attached.
+    C4: Dinner, 1 person, 520 EGP including a 180 EGP glass of wine, receipt attached.
+    C5: Conference registration, 2,400 EGP, no receipt.
+    C6: Ride-hailing to the client office, 380 EGP, no receipt.
+    C7: Team dinner, 3 people, 2,100 EGP, receipt attached.
+  grader:
+    type: rubric
+    criteria:
+      - Flags C2 (taxi over 400 EGP).
+      - Flags C4 (includes alcohol).
+      - Flags C5 (over 2,000 EGP with no receipt).
+      - Flags C7 (700 EGP per person, over the meal limit).
+      - Does not flag C1 (550 EGP per person is within the meal limit).
+      - Does not flag C3 (2,900 EGP per night is within the hotel limit, and a receipt is attached).
+      - Does not flag C6 (under 400 EGP, and no receipt is needed below 2,000 EGP).
+  reference: |
+    Violations: C2 (taxi above 400 EGP), C4 (alcohol), C5 (above 2,000 EGP without a receipt),
+    C7 (700 EGP per person, above the 600 EGP meal limit).
+    Compliant: C1 (550 per person), C3 (2,900 per night, receipt attached), C6 (under 400 EGP).
+  counterexamples:
+    - |
+      Violations: C2, C3, C4, C5, C7.
+    - |
+      Violations: C1, C2, C3, C4, C5, C7.

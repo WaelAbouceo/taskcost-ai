@@ -1,0 +1,53 @@
+request: Extract the key data from this contract
+level: complex
+deliverable: A contract data sheet
+reviewed: true
+documents:
+  contract: ../../examples/contracts/msa-delta-nilecloud.txt
+design:
+  model: hand-written
+  cost_egp: 0.0
+root:
+  id: J
+  kind: complex
+  title: Contract data extraction
+  children:
+    - id: T1
+      kind: simple
+      title: Parties
+      task_type: extraction
+      instruction: Identify the two parties and their roles.
+      depends_on: []
+      criteria:
+        - Names Delta Logistics S.A.E. as the Client.
+        - Names Nile Cloud Systems LLC as the Provider.
+      expected_answer: "Client: Delta Logistics S.A.E.; Provider: Nile Cloud Systems LLC"
+    - id: T2
+      kind: simple
+      title: Quarterly fee
+      task_type: extraction
+      instruction: Find the service fee and how often it is paid.
+      depends_on: []
+      criteria:
+        - States a fee of EGP 145,000 per calendar quarter.
+      expected_answer: EGP 145,000 per calendar quarter, invoiced in advance
+    - id: T3
+      kind: simple
+      title: Annual fee
+      task_type: calculation
+      instruction: Calculate the annual fee from the quarterly fee.
+      depends_on: [T2]
+      needs_documents: false
+      criteria:
+        - States the annual fee as EGP 580,000.
+      expected_answer: EGP 580,000 per year (4 x 145,000)
+    - id: T4
+      kind: simple
+      title: Contract data sheet
+      task_type: assembly
+      instruction: Combine the parties and fees into one contract data sheet.
+      depends_on: [T1, T2, T3]
+      needs_documents: false
+      criteria:
+        - Includes the parties, the quarterly fee and the annual fee without changing them.
+      expected_answer: "Client: Delta Logistics S.A.E.; Provider: Nile Cloud Systems LLC; Fee: EGP 145,000 per quarter; Annual: EGP 580,000"

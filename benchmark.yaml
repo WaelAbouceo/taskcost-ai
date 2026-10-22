@@ -1,0 +1,81 @@
+# TaskCost AI benchmark configuration.
+# Model ids must exist in the live catalog: run `taskcost models` to see current ids and EGP prices.
+name: taskcost-v0.1
+tasks: tasks              # standard task suite used by `taskcost run`
+
+# Helper models: the ones that read the user's request around the comparison. The home page has a switch
+# between these modes; helper_mode is the default.
+#   design_model        breaks a project or complex task down into simple tasks (`taskcost plan`)
+#   quick_design_model  turns a vague request into one concrete, checkable task
+#   profiler_model      Agent 1: sizes the request and judges how hard each task is
+#   blueprint_model     maps workflows and projects onto standard enterprise processes
+#   sample_model        writes realistic test examples (self-checked by the reviewers)
+# Chat models answer Agent 1's decision questions through a JSON prompt (client.decide), in the same answer
+# shapes as Jev. The reviewers (judge_models) are not part of a mode: they must not be the model they grade.
+helper_mode: egypt
+helper_modes:
+  egypt:
+    label: Keep my request in Egypt
+    description: Every step that reads your request runs on a model hosted in Egypt.
+    design_model: SovereignEG/Qwen3.8-27B-FP8
+    quick_design_model: SovereignEG/Qwen3.8-27B-FP8
+    profiler_model: SovereignEG/Qwen3.8-27B-FP8
+    blueprint_model: SovereignEG/Qwen3.8-27B-FP8
+    sample_model: SovereignEG/Qwen3.8-27B-FP8
+  global:
+    label: Global helpers
+    description: Claude, Jev and DeepSeek read your request abroad; Agent 1 is cheaper, and examples come from a model family not under test.
+    design_model: claude-sonnet-5.5
+    quick_design_model: claude-sonnet-5.5
+    profiler_model: jev-1.13
+    blueprint_model: claude-sonnet-5.5
+    sample_model: deepseek-v4-pro
+
+# Model policy: prefer open-source (open-weight) models, and among those the ones SovereignEG hosts in Egypt
+# (catalog `source: sovereign`). Next come open models served abroad, then proprietary ones (OpenAI, Claude,
+# Gemini…) only when no open model is fast and reliable enough. Models that passed less than
+# min_model_pass_rate of the task library are never recommended.
+prefer_open_weights: true
+prefer_egypt_hosted: true
+min_model_pass_rate: 0.85
+
+# Quick compare (the home page): the models every task is tested on. Egypt-hosted open source first; one
+# proprietary model is kept as the fallback and as a reference. Measured on the task library
+# (results/calibration-egypt*, calibration-open-*). Qwen/Qwen3-0.6B is also hosted in Egypt but passed 4/20.
+tiers:
+  Egypt-hosted: SovereignEG/Qwen3.8-27B-FP8  # open; hosted in Egypt; 19/20 on the library; too slow for a chatbot
+  Fast: gpt-oss-20b                          # open, abroad; cheapest; too slow for a chatbot
+  Strong: deepseek-v4-pro                    # open, abroad; 20/20 on the library
+  Proprietary: gpt-5.4-mini                  # fallback when no open model is good or fast enough
+escalate_at: 0.5                        # step up from the cheapest model if Agent 1 thinks it more likely than not to fail
+
+cache:
+  decisions_hours: 24     # reuse Jev's answer for the same task and question
+  comparisons_hours: 24   # reuse a quick comparison of the same task, models and use case
+
+# Worker models under test: each one does every simple task.
+
+models:
+  - gemini-3.1-flash-lite
+  - gpt-5.4-mini
+  - id: gpt-oss-120b-turbo
+    label: gpt-oss-120b-turbo@low
+    reasoning_effort: low
+
+temperature: 0.2         # ignored for models that don't support it
+trials: 3                # independent runs per task, used for success rate and reliability
+max_attempts: 2          # retries allowed when an answer fails its grader; all attempts are billed
+concurrency: 4
+timeout_s: 90
+
+# Judge panel: grades every answer against each task's criteria; each criterion passes on a majority
+# vote. Use an odd number of judges from different model families, and none of the models under test.
+# Judge spend is reported separately and is never charged to the models under test.
+judge_models:
+  - jev-1.13               # decision model: per-criterion probabilities in one cheap call
+  - gpt-6-luna-decisions   # decision model from a different family
+  - claude-haiku-5.5       # chat model: pass/fail with a written reason per criterion
+judge_threshold: 0.8       # a judge votes "pass" on a criterion at or above this probability
+min_success_rate: 0.8    # models below this are listed but not ranked by cost per success
+
+output_dir: results

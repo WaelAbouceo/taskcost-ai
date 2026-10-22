@@ -1,0 +1,252 @@
+"""Quick compare: one simple enterprise task, one model per tier (Fast, Balanced, Thinking, Frontier...).
+
+The request is made concrete by the quick designer, every tier answers the same task, the judge panel
+checks each answer, and the result is the cost per correct answer, projected to 1,000 tasks.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from dataclasses import replace
+from datetime import datetime
+from pathlib import Path
+from typing import Any, TextIO
+
+from .cache import Cache, CachedDecisions
+from .config import BenchmarkConfig, ModelSpec
+from .design import design_simple_task
+from .execute import execute_plan
+from .plan import Plan, build_task
+from .recommender import recommend_hybrid
+from .licenses import is_egypt_hosted, is_open_weights
+from .naming import slug
+from .registry import USE_CASES, registry_from_results
+from .report import finalize_run
+from .runner import Backend, load_attempts
+
+
+async def quick_compare(
+    config: BenchmarkConfig,
+    request: str,
+    tiers: list[tuple[str, str]],
+    backend: Backend,
+    plans_dir: Path,
+    documents: dict[str, Path] | None = None,
+    trials: int = 1,
+    log: TextIO = sys.stderr,
+    progress: Any = None,
+    use_case: str = "batch",
+    plan: Plan | None = None,
+    cache: Cache | None = None,
+    use_case_guess: dict[str, float] | None = None,
+) -> Path:
+    """Run the whole quick flow and return the results folder.
+
+    Pass `plan` to reuse an earlier concrete task (for "run again"), so the results stay comparable.
+    `use_case_guess` holds Agent 1's probabilities when it chose the use case, rather than the user.
+    """
+    if use_case not in USE_CASES:
+        raise ValueError(f"use_case must be one of {list(USE_CASES)}")
+    tiers = list(dict(tiers).items()) if tiers else list(config.tiers)
+    tiers = [(tier, model) for tier, model in tiers if model]
+    if not tiers:
+        raise ValueError("Choose at least one model")
+    seen: dict[str, str] = {}
+    for tier, model in tiers:
+        seen.setdefault(model, tier)
+    designer_id = config.quick_design_model or config.design_model
+    if not designer_id:
+        raise ValueError("Set quick_design_model (or design_model) in benchmark.yaml")
+
+    catalog = await backend.list_models()
+    missing = [m for m in [designer_id, *seen] if m not in catalog]
+    if missing:
+        raise ValueError(f"Models not in the catalog: {missing}")
+
+    if progress:
+        progress("design")
+    if plan is None:
+        print(f"Understanding the task with {designer_id}...", file=log)
+        plans_dir.mkdir(parents=True, exist_ok=True)
+        plan = await design_simple_task(backend, catalog[designer_id], request, documents or {}, plans_dir.resolve())
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        plan.reviewed = True
+        plan.save(plans_dir / f"quick-{slug(plan.root.title, 'task')}-{stamp}.yaml")
+    else:
+        print("Reusing the task from the earlier comparison.", file=log)
+    task = plan.simple_tasks()[0]
+    print(f"Task: {task.title}", file=log)
+
+    recommendation, registry = await _recommend(config, plan, catalog, backend, use_case, cache, log)
+    picked = (recommendation or {}).get("model")
+    if picked and picked not in seen and picked in catalog:
+        # Always test Agent 1's own pick, so its prediction can be confirmed or refuted.
+        seen[picked] = "Agent 1 pick"
+        print(f"Adding Agent 1's pick ({picked}) to the comparison.", file=log)
+
+    if progress:
+        progress("run")
+    run_config = replace(
+        config,
+        models=tuple(ModelSpec(id=model, label=model, temperature=config.default_temperature) for model in seen),
+        trials=max(1, min(trials, 5)),
+        max_attempts=1,
+    )
+    run_dir = await execute_plan(
+        run_config, plan, backend, log=log,
+        run_name=f"quick-{slug(plan.root.title, 'task')}",
+        metadata={
+            "quick": True,
+            "tiers": [{"tier": seen[m], "model": m} for m in seen],
+            "use_case": use_case,
+            "use_case_guess": use_case_guess,
+            "recommendation": recommendation,
+            "registry": registry,
+        },
+    )
+    finalize_run(run_dir)
+    return run_dir
+
+
+async def _recommend(
+    config: BenchmarkConfig, plan: Plan, catalog: dict[str, Any], backend: Backend,
+    use_case: str, cache: Cache | None, log: TextIO,
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """Agent 1's recommendation before any model runs; skipped if there is no measured registry yet."""
+    cards, _ = registry_from_results(config.output_path)
+    registry = {model: card.to_dict() for model, card in cards.items()}
+    jev_id = config.profiler_model
+    if not cards or not jev_id or jev_id not in catalog:
+        return None, registry
+    decider = CachedDecisions(backend, cache, config.cache_decisions_hours * 3600) if cache else backend
+    task = plan.simple_tasks()[0]
+    prompt = build_task(plan, task, plan.load_documents(), {}).prompt
+    try:
+        rec = await recommend_hybrid(decider, catalog[jev_id], prompt, use_case, cards, config.escalate_at,
+                                     config.prefer_open_weights, config.min_model_pass_rate, config.prefer_egypt_hosted)
+    except Exception as exc:  # the comparison still runs without a recommendation
+        print(f"Recommendation unavailable: {exc}", file=log)
+        return None, registry
+    print(f"Agent 1 recommends {rec.model} for {use_case}{' (cached)' if rec.cached else ''}.", file=log)
+    return rec.to_dict(), registry
+
+
+def quick_summary(run_dir: Path) -> dict[str, Any]:
+    """Everything the quick-compare page shows, per tier."""
+    config = json.loads((run_dir / "config.json").read_text(encoding="utf-8"))
+    plan = Plan.load(run_dir / "plan.yaml")
+    task = plan.simple_tasks()[0]
+    records = load_attempts(run_dir)
+    use_case = config.get("use_case", "batch")
+    budget = USE_CASES.get(use_case, USE_CASES["batch"])["max_p90_s"]
+    registry = config.get("registry") or {}
+
+    tiers = []
+    for entry in config.get("tiers", []):
+        runs = sorted((r for r in records if r["model"] == entry["model"]), key=lambda r: r["trial"])
+        graded = [r for r in runs if r.get("error_kind") is None]
+        passed = [r for r in graded if r["passed"]]
+        cost = sum(r["cost_egp"] for r in runs)
+        latencies = [r["latency_s"] for r in runs if r.get("latency_s") is not None]
+        failed_checks = list(dict.fromkeys(
+            c["criterion"] for r in graded for c in r.get("criteria", []) if c["required"] and not c["passed"]
+        ))
+        cost_per_success = cost / len(passed) if passed else None
+        # Speed is judged on the registry's measured slowest-1-in-10 when available, since one run says little.
+        measured_p90 = (registry.get(entry["model"]) or {}).get("latency_p90_s")
+        slowest = measured_p90 if measured_p90 is not None else (max(latencies) if latencies else None)
+        tiers.append({
+            "open_weights": is_open_weights(entry["model"]),
+            "egypt_hosted": is_egypt_hosted(entry["model"]),
+            "fast_enough": budget is None or (slowest is not None and slowest <= budget),
+            "slowest_s": slowest,
+            "speed_source": "registry" if measured_p90 is not None else "this run",
+            "tier": entry["tier"],
+            "model": entry["model"],
+            "runs": len(runs),
+            "passed": len(passed),
+            "errors": len(runs) - len(graded),
+            "success_rate": len(passed) / len(runs) if runs else 0.0,
+            "quality": sum(r["score"] for r in graded) / len(graded) if graded else None,
+            "cost_per_answer_egp": cost / len(runs) if runs else None,
+            "cost_per_success_egp": cost_per_success,
+            "cost_per_1000_egp": cost_per_success * 1000 if cost_per_success is not None else None,
+            "latency_s": sum(latencies) / len(latencies) if latencies else None,
+            "failed_checks": failed_checks,
+            "answers": [
+                {
+                    "trial": r["trial"], "passed": r["passed"], "score": r["score"], "output": r["output"],
+                    "cost_egp": r["cost_egp"], "latency_s": r.get("latency_s"), "error": r.get("error"),
+                    "criteria": r.get("criteria", []),
+                }
+                for r in runs
+            ],
+        })
+
+    reliable = [t for t in tiers if t["runs"] and t["passed"] == t["runs"] and t["fast_enough"]]
+    prefer_open = config.get("prefer_open_weights", True)
+    prefer_egypt = config.get("prefer_egypt_hosted", False)
+    recommended = min(reliable, key=lambda t: (
+        (not t["open_weights"]) if prefer_open else False,
+        (not t["egypt_hosted"]) if prefer_egypt else False,
+        t["cost_per_success_egp"],
+    )) if reliable else None
+    cheapest = min(reliable, key=lambda t: t["cost_per_success_egp"]) if reliable else None
+    priced = [t for t in reliable if t["cost_per_success_egp"]]  # "the same result" means it also passed and was fast enough
+    most_expensive = max(priced, key=lambda t: t["cost_per_success_egp"]) if priced else None
+    judge_cost = sum(r.get("grading_cost_egp", 0.0) for r in records)
+
+    advice = config.get("recommendation")
+    if advice and advice.get("model"):
+        ran = next((t for t in tiers if t["model"] == advice["model"]), None)
+        if ran is None:
+            advice["verdict"] = "not_run"
+        elif ran["passed"] == ran["runs"] and recommended is not None and recommended["model"] == ran["model"]:
+            advice["verdict"] = "best"
+        elif ran["passed"] == ran["runs"]:
+            advice["verdict"] = "worked"
+        else:
+            advice["verdict"] = "failed"
+
+    return {
+        "name": run_dir.name,
+        "use_case": use_case,
+        "use_case_label": USE_CASES.get(use_case, USE_CASES["batch"])["label"],
+        "use_case_guess": config.get("use_case_guess"),
+        "latency_budget_s": budget,
+        "advice": advice,
+        "request": config.get("request"),
+        "title": task.title,
+        "task_type": task.task_type,
+        "instruction": task.instruction,
+        "criteria": [c if isinstance(c, str) else c.get("text", "") for c in task.criteria],
+        "expected_answer": task.expected_answer,
+        "assumptions": (config.get("design") or {}).get("assumptions", ""),
+        "documents": list(plan.documents),
+        "trials": config.get("trials"),
+        "test_mode": bool(config.get("test_mode")),
+        "design_cost_egp": (config.get("design") or {}).get("cost_egp"),
+        "judge_cost_egp": judge_cost,
+        "started_at": config.get("started_at"),
+        "tiers": tiers,
+        "recommended": recommended and {"tier": recommended["tier"], "model": recommended["model"]},
+        "cheapest_correct": cheapest and cheapest is not recommended and {
+            "tier": cheapest["tier"], "model": cheapest["model"], "cost_per_1000_egp": cheapest["cost_per_1000_egp"],
+            "egypt_hosted": cheapest["egypt_hosted"], "open_weights": cheapest["open_weights"],
+        } or None,
+        "prefer_open_weights": prefer_open,
+        "proprietary_fallback": bool(prefer_open and recommended and not recommended["open_weights"]),
+        "prefer_egypt_hosted": prefer_egypt,
+        "helper_mode": config.get("helper_mode"),
+        "helpers": config.get("helpers"),
+        "helpers_egypt_hosted": bool(config.get("helpers")) and all(
+            is_egypt_hosted(m) for m in (config.get("helpers") or {}).values() if m),
+        "abroad_fallback": bool(prefer_egypt and recommended and recommended["open_weights"]
+                                and not recommended["egypt_hosted"] and any(t["egypt_hosted"] for t in tiers)),
+        "savings_ratio": (
+            most_expensive["cost_per_success_egp"] / recommended["cost_per_success_egp"]
+            if recommended and most_expensive and most_expensive is not recommended else None
+        ),
+        "most_expensive": most_expensive and {"tier": most_expensive["tier"], "model": most_expensive["model"]},
+    }

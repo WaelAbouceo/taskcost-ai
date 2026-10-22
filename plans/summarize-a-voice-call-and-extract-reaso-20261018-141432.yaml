@@ -1,0 +1,99 @@
+request: "summarize a voice call and extract reason for cal\r\nl summary"
+level: complex
+deliverable: A call record containing the reason for the call, the outcome, the follow-up actions and
+  a short summary of the voice call, based on the call transcript.
+reviewed: false
+documents: {}
+design:
+  model: claude-sonnet-5.5
+  cost_egp: 1.28902
+  prompt_tokens: 830
+  completion_tokens: 2026
+  created_at: '2026-10-18T11:14:46.580108+00:00'
+root:
+  id: J
+  kind: complex
+  title: Voice call summary with reason for call
+  children:
+  - id: T1
+    kind: simple
+    title: Extract the reason for the call
+    task_type: extraction
+    instruction: Read the call transcript and state in one sentence the main reason the caller made the
+      call (the problem, request or question they raised first or most prominently). Do not include the
+      outcome or any other details.
+    depends_on: []
+    criteria:
+    - States the caller's primary problem, request or question as it appears in the transcript
+    - Is one sentence of at most 30 words
+    - Does not include the call outcome or resolution
+    - Does not mention any issue that the caller did not raise in the call
+    expected_answer: null
+    needs_documents: true
+  - id: T2
+    kind: simple
+    title: Extract the call outcome
+    task_type: extraction
+    instruction: 'Read the call transcript and state how the call ended with respect to the caller''s
+      reason for calling: resolved, partly resolved, unresolved or escalated. Add one short sentence explaining
+      what was agreed or decided at the end of the call.'
+    depends_on: []
+    criteria:
+    - 'Gives exactly one status: resolved, partly resolved, unresolved or escalated (or an equivalent
+      wording)'
+    - The status matches what the transcript shows at the end of the call
+    - The explanation sentence is consistent with what was said or agreed in the transcript
+    expected_answer: null
+    needs_documents: true
+  - id: T3
+    kind: simple
+    title: Extract follow-up actions
+    task_type: extraction
+    instruction: Read the call transcript and list every follow-up action that the agent or the caller
+      committed to after the call. For each action, state who owns it and the deadline if one was given.
+      If no actions were agreed, answer 'No follow-up actions'.
+    depends_on: []
+    criteria:
+    - Every follow-up action that was committed to in the transcript is listed
+    - Each action is attributed to the correct person (agent or caller)
+    - Any deadline stated in the transcript is included and correct
+    - No action is listed that was not agreed in the call
+    expected_answer: null
+    needs_documents: true
+  - id: T4
+    kind: simple
+    title: Write the call summary
+    task_type: summarization
+    instruction: Using the call transcript and the results of the earlier tasks, write a neutral summary
+      of the call in 3 to 5 sentences. Cover why the caller called, the key points discussed, the outcome
+      and any follow-up actions. Do not add facts that are not in the transcript.
+    depends_on:
+    - T1
+    - T2
+    - T3
+    criteria:
+    - Is 3 to 5 sentences long
+    - Mentions the reason for the call consistent with the earlier extraction
+    - States the call outcome consistent with the earlier extraction
+    - Mentions the follow-up actions, or states that there are none, consistent with the earlier extraction
+    - Contains no facts that are absent from the transcript
+    expected_answer: null
+    needs_documents: true
+  - id: T5
+    kind: simple
+    title: Assemble the call record
+    task_type: assembly
+    instruction: 'Combine the results of the earlier tasks into one call record with four labelled sections:
+      Reason for call, Outcome, Follow-up actions and Summary. Copy each result as it is, without changing
+      it.'
+    depends_on:
+    - T1
+    - T2
+    - T3
+    - T4
+    criteria:
+    - 'Contains the four sections: Reason for call, Outcome, Follow-up actions and Summary'
+    - The content of each section matches the result of the corresponding earlier task
+    - No new information is added and no result is altered
+    expected_answer: null
+    needs_documents: false

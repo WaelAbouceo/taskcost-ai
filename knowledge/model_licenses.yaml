@@ -1,0 +1,37 @@
+# FALLBACK ONLY. The source of truth is SovereignEG's catalog (`weights_type` on GET /v1/models),
+# which taskcost reads automatically. This list is used only for models the catalog does not label.
+# Which model families publish open weights (anyone can download and self-host them).
+# Matching is by prefix on the lower-cased model id. Exceptions win over families.
+
+open_weight_families:
+  - gpt-oss-          # OpenAI open-weight models
+  - llama-
+  - qwen/             # SovereignEG-hosted Qwen checkpoints
+  - sovereigneg/
+  - deepseek-
+  - gemma-
+  - mistral-
+  - glm-
+  - kimi-k2
+  - minimax-m
+  - nvidia-nemotron-
+  - nemotron-
+  - phi-
+  - granite-
+  - hermes-
+  - ling-
+  - meta-llama-
+  - mimo-
+  - hy3
+  - hy4
+  - inkling
+  - muse-
+  - step-
+  - voxtral-
+
+# Qwen publishes sized checkpoints (for example qwen3-next-80b-a3b) as open weights,
+# but its flash, plus and max models are API-only.
+qwen_rule: open only if the id contains a parameter size such as 27b or a3b
+
+proprietary_exceptions:
+  - qwen3-coder-flash

@@ -1,0 +1,36 @@
+id: customer-reply-arabic
+category: customer-reply
+description: Reply in Arabic to an Egyptian-dialect complaint about a missing item, following the policy.
+prompt: |
+  You are a customer service agent for an Egyptian electronics retailer. Reply to the customer below,
+  in Arabic, following the policy exactly.
+
+  Policy for missing items:
+  - Apologise, and quote the order number.
+  - Offer the customer a choice: we ship the missing item free within 3 working days, or we refund the
+    item's price to the original payment method within 7 working days.
+  - The missing laptop charger costs EGP 950.
+  - Do not promise same-day delivery, and do not offer any other compensation.
+
+  Customer message:
+  طلبي رقم 77120 وصل ناقص شاحن اللابتوب، والفاتورة مكتوب فيها إنه موجود. أنا محتاجه ضروري ومش فاهم إزاي ده يحصل. عايز حل النهارده.
+grader:
+  type: rubric
+  criteria:
+    - The reply is written in Arabic.
+    - Quotes the order number 77120.
+    - Apologises for the missing charger.
+    - Offers free shipping of the missing charger within 3 working days.
+    - Offers, as an alternative, a refund of EGP 950 to the original payment method within 7 working days.
+    - Does not promise same-day delivery.
+    - Does not offer any compensation beyond the two options in the policy.
+reference: |
+  عزيزي العميل، نعتذر جداً عن وصول طلبك رقم 77120 ناقصاً شاحن اللابتوب، ونتفهم تماماً حاجتك إليه.
+  يسعدنا أن نقدم لك أحد خيارين: إما أن نرسل لك الشاحن مجاناً خلال 3 أيام عمل، أو أن نرد لك ثمنه (950 جنيهاً)
+  إلى وسيلة الدفع الأصلية خلال 7 أيام عمل. من فضلك أخبرنا بالخيار الذي تفضله وسنبدأ فوراً. مع خالص التحية.
+counterexamples:
+  - |
+    عزيزي العميل، نعتذر عن المشكلة في طلبك رقم 77120. سنرسل لك الشاحن اليوم، وسنضيف قسيمة خصم 10% على طلبك القادم.
+  - |
+    Dear customer, we are sorry order 77120 arrived without the charger. We can ship it free within 3 working days,
+    or refund EGP 950 to your original payment method within 7 working days.

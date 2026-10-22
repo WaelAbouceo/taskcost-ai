@@ -1,0 +1,52 @@
+id: invoice-extraction
+category: extraction
+description: Extract the key fields from a supplier invoice, including a due date that crosses a year end.
+prompt: |
+  Extract these fields from the invoice for our accounts payable system: invoice number, supplier,
+  buyer tax ID, issue date, due date (calculated from the payment terms), number of line items, VAT amount,
+  total due and currency.
+
+  ---
+  ALEXANDRIA INDUSTRIAL SUPPLIES S.A.E.
+  Invoice No: AIS-2026-1193                     Issue date: 28/11/2026
+  Bill to: Cairo Fresh Foods S.A.E., Tax ID 318-442-905
+
+  Items:
+    1. Stainless steel shelving unit    3 x 1,250.00     3,750.00
+    2. Safety gloves (box of 50)       12 x    85.50     1,026.00
+  Subtotal                                               4,776.00
+  Discount 5%                                             -238.80
+  Net amount                                             4,537.20
+  VAT 14%                                                  635.21
+  Total due                                         EGP  5,172.41
+
+  Payment terms: 45 days from the issue date.
+  ---
+grader:
+  type: rubric
+  criteria:
+    - Gives the invoice number AIS-2026-1193.
+    - Gives the supplier as Alexandria Industrial Supplies.
+    - Gives the buyer tax ID 318-442-905.
+    - Gives the issue date as 28 November 2026.
+    - Gives the due date as 12 January 2027 (45 days after 28 November 2026).
+    - Gives 2 line items.
+    - Gives the VAT amount as 635.21.
+    - Gives the total due as EGP 5,172.41.
+reference: |
+  Invoice number: AIS-2026-1193
+  Supplier: Alexandria Industrial Supplies S.A.E.
+  Buyer tax ID: 318-442-905
+  Issue date: 2026-11-28
+  Due date: 2027-01-12
+  Line items: 2
+  VAT: 635.21
+  Total due: 5,172.41
+  Currency: EGP
+counterexamples:
+  - |
+    Invoice AIS-2026-1193 from Alexandria Industrial Supplies; buyer tax ID 318-442-905; issued 28 Nov 2026;
+    due 28 Dec 2026; 2 line items; VAT 635.21; total EGP 5,172.41.
+  - |
+    Invoice AIS-2026-1193, Alexandria Industrial Supplies, buyer tax ID 318-442-905, issued 2026-11-28,
+    due 2027-01-12, 2 items, VAT 668.64, total EGP 4,776.00.

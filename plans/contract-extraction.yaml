@@ -1,0 +1,235 @@
+request: Extract the key data from this contract
+level: complex
+deliverable: A single key-data summary of the contract covering parties, dates, renewal, fees, payment
+  terms, service credits, termination, liability, confidentiality and governing law and disputes.
+reviewed: true
+documents:
+  contract: ../examples/contracts/msa-delta-nilecloud.txt
+design:
+  model: claude-sonnet-5.5
+  cost_egp: 4.899453
+  prompt_tokens: 2178
+  completion_tokens: 7896
+  created_at: '2026-10-18T09:51:54.660831+00:00'
+root:
+  id: J
+  kind: complex
+  title: Key data extraction from the Delta Logistics / Nile Cloud Systems Master Services Agreement
+  children:
+  - id: T1
+    kind: simple
+    title: Identify the parties and their roles
+    task_type: extraction
+    instruction: Identify the two parties to the Master Services Agreement. For each, give the full legal
+      name, its defined role (Client or Provider) and its commercial registration number.
+    depends_on: []
+    criteria:
+    - States that Delta Logistics S.A.E. is the Client
+    - States that Nile Cloud Systems LLC is the Provider
+    - Gives commercial registration no. 184522 for Delta Logistics S.A.E.
+    - Gives commercial registration no. 99317 for Nile Cloud Systems LLC
+    expected_answer: 'Client: Delta Logistics S.A.E. (commercial registration no. 184522). Provider: Nile
+      Cloud Systems LLC (commercial registration no. 99317).'
+    needs_documents: true
+  - id: T2
+    kind: simple
+    title: Derive the Effective Date
+    task_type: calculation
+    instruction: The Effective Date is not stated directly. Derive it from the date of signature given
+      in the preamble and the rule in clause 2.1 (the first day of the calendar month following the date
+      of signature). Give the Effective Date as a full calendar date.
+    depends_on: []
+    criteria:
+    - Uses 3 February 2026 as the date of signature
+    - Applies the rule 'first day of the following calendar month'
+    - States the Effective Date as 1 March 2026
+    expected_answer: 1 March 2026
+    needs_documents: true
+  - id: T3
+    kind: simple
+    title: Derive the end date of the Initial Term
+    task_type: calculation
+    instruction: Using the Effective Date from the previous task and the Initial Term length in clause
+      2.2, derive the last day of the Initial Term. Take into account that 2028 is a leap year. Give the
+      last day as a full calendar date.
+    depends_on:
+    - T2
+    criteria:
+    - Uses an Initial Term of 24 months
+    - Counts the term from the Effective Date of 1 March 2026
+    - States the last day of the Initial Term as 29 February 2028
+    expected_answer: 29 February 2028
+    needs_documents: true
+  - id: T4
+    kind: simple
+    title: Summarise the renewal mechanism
+    task_type: summarization
+    instruction: In one or two sentences, summarise how the Agreement renews after the Initial Term (clause
+      2.3). Include whether renewal is automatic, the length of each Renewal Term and the notice needed
+      to prevent renewal.
+    depends_on: []
+    criteria:
+    - States that renewal is automatic
+    - States that each Renewal Term is twelve (12) months
+    - States that either party can prevent renewal by giving at least 90 days' written notice before the
+      end of the then-current term
+    expected_answer: The Agreement renews automatically for successive 12-month Renewal Terms unless either
+      party gives at least 90 days' written notice of non-renewal before the end of the then-current term.
+    needs_documents: true
+  - id: T5
+    kind: simple
+    title: Derive the last date for non-renewal notice for the Initial Term
+    task_type: calculation
+    instruction: Derive the latest date on which written notice of non-renewal can be given to stop the
+      first renewal. Take the last day of the Initial Term from the earlier task and count back 90 calendar
+      days (the notice period in clause 2.3). Give the result as a full calendar date.
+    depends_on:
+    - T3
+    - T4
+    criteria:
+    - Uses a notice period of 90 days
+    - Counts back from 29 February 2028, the last day of the Initial Term
+    - States the latest notice date as 1 December 2027, or 30 November 2027 if it counts conservatively
+      so that a full 90 days remain
+    expected_answer: 1 December 2027 (30 November 2027 is also acceptable under a conservative count)
+    needs_documents: true
+  - id: T6
+    kind: simple
+    title: Calculate the annual service fee
+    task_type: calculation
+    instruction: Calculate the total service fee payable for one full year, excluding VAT, from the quarterly
+      fee in clause 3.1. State the quarterly fee used and the annual total in EGP.
+    depends_on: []
+    criteria:
+    - Uses a quarterly fee of EGP 145,000
+    - Multiplies by four quarters per year
+    - States the annual fee as EGP 580,000
+    - States that the figure excludes VAT
+    expected_answer: EGP 580,000 per year excluding VAT (4 × EGP 145,000).
+    needs_documents: true
+  - id: T7
+    kind: simple
+    title: Summarise payment terms
+    task_type: summarization
+    instruction: Summarise the payment terms in clauses 3.1 to 3.3 in one or two sentences. Include the
+      invoicing frequency and timing, the payment deadline, the VAT treatment and the interest on overdue
+      amounts.
+    depends_on: []
+    criteria:
+    - States that invoices are issued quarterly in advance
+    - States that invoices are payable within 30 days of the invoice date
+    - States that fees exclude VAT, which is added at the prevailing rate (currently 14%)
+    - States that overdue amounts bear interest at 1.5% per month
+    expected_answer: Fees are invoiced quarterly in advance and are payable within 30 days of the invoice
+      date. They are exclusive of VAT, which is added at the prevailing rate (currently 14%). Overdue
+      amounts bear interest at 1.5% per month until paid.
+    needs_documents: true
+  - id: T8
+    kind: simple
+    title: Calculate the maximum monthly service credit
+    task_type: calculation
+    instruction: Using clause 4.2, calculate the maximum service credit the Client can receive for a single
+      calendar month, in EGP. The monthly fee is one third of the quarterly fee, and the cap is 25% of
+      the monthly fee. Round to two decimal places.
+    depends_on: []
+    criteria:
+    - Derives the monthly fee as one third of EGP 145,000 (about EGP 48,333.33)
+    - Applies the 25% maximum
+    - States the maximum monthly credit as EGP 12,083.33
+    expected_answer: EGP 12,083.33 (25% of a monthly fee of EGP 48,333.33).
+    needs_documents: true
+  - id: T9
+    kind: simple
+    title: Summarise termination for convenience
+    task_type: summarization
+    instruction: 'Summarise the Client''s right to terminate for convenience under clause 5.2. State from
+      what date it can first be exercised, the notice period and the early termination fee as an amount
+      in EGP, excluding VAT. The date and the amount must be derived: use the Effective Date from the
+      earlier task, and calculate the fee from the quarterly fee.'
+    depends_on:
+    - T2
+    criteria:
+    - States that the right arises only after the first 12 months of the Initial Term, i.e. from 1 March
+      2027
+    - States that 60 days' written notice is required
+    - States that the early termination fee is two quarterly fees
+    - States the fee amount as EGP 290,000
+    expected_answer: After the first 12 months of the Initial Term (from 1 March 2027), the Client may
+      terminate for convenience on 60 days' written notice by paying an early termination fee of two quarterly
+      fees, EGP 290,000 excluding VAT.
+    needs_documents: true
+  - id: T10
+    kind: simple
+    title: Summarise the limitation of liability
+    task_type: summarization
+    instruction: Summarise the limitation of liability in clauses 6.1 and 6.2 in one or two sentences.
+      State how the cap is measured and which matters are excluded from it.
+    depends_on: []
+    criteria:
+    - States that each party's liability is capped at the fees paid or payable by the Client in the 12
+      months before the event giving rise to the claim
+    - States that breach of confidentiality is excluded from the cap
+    - States that death or personal injury caused by negligence is excluded from the cap
+    expected_answer: Each party's total liability is limited to the fees paid or payable by the Client
+      in the 12 months before the event giving rise to the claim. The cap does not apply to breach of
+      confidentiality or to death or personal injury caused by negligence.
+    needs_documents: true
+  - id: T11
+    kind: simple
+    title: Extract the confidentiality duration
+    task_type: extraction
+    instruction: State how long each party must keep the other's confidential information secret under
+      clause 7.1.
+    depends_on: []
+    criteria:
+    - States that the obligation applies during the term of the Agreement
+    - States that it continues for three (3) years after the Agreement ends
+    expected_answer: During the term of the Agreement and for three years after it ends.
+    needs_documents: true
+  - id: T12
+    kind: simple
+    title: Extract governing law and dispute resolution
+    task_type: extraction
+    instruction: State the governing law and the dispute resolution mechanism in clause 8, including the
+      institution, the seat, the language and the number of arbitrators.
+    depends_on: []
+    criteria:
+    - States that the governing law is the law of the Arab Republic of Egypt
+    - States that disputes go to arbitration administered by CRCICA (Cairo Regional Centre for International
+      Commercial Arbitration)
+    - States that the seat is Cairo and the language is English
+    - States that there are three arbitrators
+    expected_answer: Egyptian law governs. Disputes are finally resolved by CRCICA arbitration seated
+      in Cairo, in English, before three arbitrators.
+    needs_documents: true
+  - id: T13
+    kind: simple
+    title: Assemble the key data summary
+    task_type: assembly
+    instruction: 'Combine the results of all previous tasks into one key-data summary of the contract,
+      with a short labelled entry for each: parties, Effective Date, end of Initial Term, renewal mechanism,
+      last date for non-renewal notice, annual fee, payment terms, maximum monthly service credit, termination
+      for convenience, limitation of liability, confidentiality, and governing law and disputes. Do not
+      change any of the results.'
+    depends_on:
+    - T1
+    - T2
+    - T3
+    - T4
+    - T5
+    - T6
+    - T7
+    - T8
+    - T9
+    - T10
+    - T11
+    - T12
+    criteria:
+    - Includes an entry for every one of the twelve items listed in the instruction
+    - Each entry matches the result of its source task without alteration
+    - Does not add facts that are not in the earlier task results
+    expected_answer: 'A labelled summary containing the results of T1 to T12 unchanged, including: Effective
+      Date 1 March 2026; Initial Term ends 29 February 2028; last non-renewal notice date 1 December 2027;
+      annual fee EGP 580,000 excluding VAT; maximum monthly service credit EGP 12,083.33; early termination
+      fee EGP 290,000.'
+    needs_documents: false

@@ -1,0 +1,247 @@
+request: Extract the key data from this contract
+level: complex
+deliverable: A single structured summary of the contract's key data (parties, dates, renewal, fees, service
+  credits, termination, liability, confidentiality, governing law and disputes), with derived dates and
+  amounts calculated from the contract text.
+reviewed: false
+documents:
+  msa-delta-nilecloud: ../examples/contracts/msa-delta-nilecloud.txt
+design:
+  model: claude-sonnet-5.5
+  cost_egp: 4.98872
+  prompt_tokens: 2187
+  completion_tokens: 8046
+  created_at: '2026-10-18T11:18:20.652979+00:00'
+root:
+  id: J
+  kind: complex
+  title: 'Key data extraction: Master Services Agreement, Delta Logistics and Nile Cloud Systems'
+  children:
+  - id: T1
+    kind: simple
+    title: Identify the parties and their roles
+    task_type: extraction
+    instruction: State the full legal names of the two parties to the Master Services Agreement and say
+      which one is the Client and which is the Provider.
+    depends_on: []
+    criteria:
+    - Identifies Delta Logistics S.A.E. as the Client.
+    - Identifies Nile Cloud Systems LLC as the Provider.
+    - Does not name any other party as a party to the Agreement.
+    expected_answer: 'Client: Delta Logistics S.A.E. Provider: Nile Cloud Systems LLC.'
+    needs_documents: true
+  - id: T2
+    kind: simple
+    title: Derive the Effective Date
+    task_type: calculation
+    instruction: The Agreement was made on 3 February 2026. Clause 2.1 says it becomes effective on the
+      first day of the calendar month following the date of signature. Derive the Effective Date from
+      this rule and state it as a calendar date.
+    depends_on: []
+    criteria:
+    - States the Effective Date as 1 March 2026.
+    - The answer is derived from the clause 2.1 rule (first day of the month after signature), not taken
+      from the signing date.
+    expected_answer: 1 March 2026
+    needs_documents: true
+  - id: T3
+    kind: simple
+    title: Derive the end date of the Initial Term
+    task_type: calculation
+    instruction: Using the Effective Date from the previous task and the Initial Term length in clause
+      2.2, derive the last day of the Initial Term. Note that 2028 is a leap year.
+    depends_on:
+    - T2
+    criteria:
+    - States that the Initial Term is 24 months.
+    - States the last day of the Initial Term as 29 February 2028.
+    - Treats the term as starting on 1 March 2026.
+    expected_answer: The Initial Term is 24 months from 1 March 2026 and ends on 29 February 2028.
+    needs_documents: true
+  - id: T4
+    kind: simple
+    title: Extract the renewal mechanism
+    task_type: extraction
+    instruction: 'State what happens at the end of the Initial Term: whether the Agreement renews, the
+      length of each Renewal Term, and the notice needed to prevent renewal.'
+    depends_on: []
+    criteria:
+    - States that the Agreement renews automatically.
+    - States that each Renewal Term is twelve (12) months.
+    - States that either party can prevent renewal by giving at least 90 days' written notice before the
+      end of the then-current term.
+    expected_answer: Automatic renewal for successive 12-month Renewal Terms unless either party gives
+      at least 90 days' written notice of non-renewal before the end of the then-current term.
+    needs_documents: true
+  - id: T5
+    kind: simple
+    title: Derive the last date for non-renewal notice for the Initial Term
+    task_type: calculation
+    instruction: Clause 2.3 requires at least 90 days' written notice of non-renewal before the end of
+      the then-current term. Taking the end of the Initial Term as 29 February 2028 (from the previous
+      task), count back 90 days and state the latest date on which notice can be given to stop the first
+      renewal.
+    depends_on:
+    - T3
+    criteria:
+    - States the latest notice date as 1 December 2027.
+    - The date is derived by counting 90 days back from 29 February 2028.
+    expected_answer: 1 December 2027
+    needs_documents: true
+  - id: T6
+    kind: simple
+    title: Extract the service fee
+    task_type: extraction
+    instruction: State the service fee amount, the period it is charged for, and when it is invoiced.
+      Also state whether it includes value added tax and the VAT rate mentioned.
+    depends_on: []
+    criteria:
+    - States the fee as EGP 145,000 per calendar quarter.
+    - States that it is invoiced quarterly in advance.
+    - States that the fee excludes VAT and that VAT is added at the prevailing rate, currently 14%.
+    expected_answer: EGP 145,000 per calendar quarter, invoiced quarterly in advance, exclusive of VAT,
+      which is added at the prevailing rate (currently 14%).
+    needs_documents: true
+  - id: T7
+    kind: simple
+    title: Extract payment term and late-payment interest
+    task_type: extraction
+    instruction: State how many days the Client has to pay an invoice, from what date the period runs,
+      and the interest rate charged on overdue amounts.
+    depends_on: []
+    criteria:
+    - States that invoices are payable within 30 days.
+    - States that the 30 days run from the invoice date.
+    - States that overdue amounts bear interest at 1.5% per month.
+    expected_answer: Payable within 30 days of the invoice date; overdue amounts bear interest at 1.5%
+      per month until paid.
+    needs_documents: true
+  - id: T8
+    kind: simple
+    title: Extract the renewal fee increase limit
+    task_type: extraction
+    instruction: State whether fees are fixed during the Initial Term, and the maximum fee increase the
+      Provider may apply for a Renewal Term and the notice it must give.
+    depends_on: []
+    criteria:
+    - States that fees are fixed for the Initial Term.
+    - States that the maximum increase for a Renewal Term is 7%.
+    - States that written notice must be given at least 60 days before the Renewal Term begins.
+    expected_answer: Fees are fixed for the Initial Term. For each Renewal Term the Provider may increase
+      fees by no more than 7%, by written notice given at least 60 days before the Renewal Term begins.
+    needs_documents: true
+  - id: T9
+    kind: simple
+    title: Extract termination for convenience terms and calculate the early termination fee
+    task_type: calculation
+    instruction: 'Describe the Client''s right to terminate for convenience under clause 5.2: when it
+      becomes available, the notice required, and the early termination fee. The fee is stated as a number
+      of quarterly fees, so calculate it as an amount in EGP using the quarterly fee from the previous
+      fee task.'
+    depends_on:
+    - T6
+    criteria:
+    - States that the right is available only after the first 12 months of the Initial Term.
+    - States that 60 days' written notice is required.
+    - States that the fee equals two quarterly fees.
+    - States the calculated fee as EGP 290,000 (excluding VAT).
+    expected_answer: After the first 12 months of the Initial Term the Client may terminate for convenience
+      on 60 days' written notice and payment of an early termination fee of two quarterly fees = 2 × EGP
+      145,000 = EGP 290,000 (excluding VAT).
+    needs_documents: true
+  - id: T10
+    kind: simple
+    title: Calculate the maximum monthly service credit
+    task_type: calculation
+    instruction: Under clause 4.2 the monthly fee is one third of the quarterly fee, and the service credit
+      is capped at 25% of the monthly fee. Using the quarterly fee from the previous fee task, calculate
+      the monthly fee and the maximum service credit for a month, in EGP.
+    depends_on:
+    - T6
+    criteria:
+    - States the monthly fee as about EGP 48,333.33 (145,000 ÷ 3).
+    - States the maximum monthly service credit as about EGP 12,083.33 (25% of the monthly fee).
+    - Rounding to the nearest pound or to two decimals is acceptable.
+    expected_answer: Monthly fee = 145,000 ÷ 3 ≈ EGP 48,333.33; maximum service credit = 25% × 48,333.33
+      ≈ EGP 12,083.33 per month.
+    needs_documents: true
+  - id: T11
+    kind: simple
+    title: Extract the liability cap and its exceptions
+    task_type: extraction
+    instruction: State how each party's total liability is limited under clause 6.1, and which matters
+      are excluded from that limit under clause 6.2.
+    depends_on: []
+    criteria:
+    - States that the limit is the fees paid or payable by the Client in the 12 months before the event
+      giving rise to the claim.
+    - States that the limit applies to each party's total liability in any twelve-month period.
+    - States that breach of confidentiality is excluded from the limit.
+    - States that death or personal injury caused by negligence is excluded from the limit.
+    expected_answer: Each party's total liability in any twelve-month period is capped at the fees paid
+      or payable by the Client in the 12 months before the event giving rise to the claim. The cap does
+      not apply to breach of confidentiality or to death or personal injury caused by negligence.
+    needs_documents: true
+  - id: T12
+    kind: simple
+    title: Extract the confidentiality period
+    task_type: extraction
+    instruction: State how long each party must keep the other party's confidential information secret.
+    depends_on: []
+    criteria:
+    - States that the obligation applies during the term of the Agreement.
+    - States that it continues for three (3) years after the Agreement ends.
+    expected_answer: During the term of the Agreement and for 3 years after it ends.
+    needs_documents: true
+  - id: T13
+    kind: simple
+    title: Extract governing law and dispute resolution
+    task_type: extraction
+    instruction: 'State the governing law and how disputes are resolved: the institution, the seat, the
+      language and the number of arbitrators.'
+    depends_on: []
+    criteria:
+    - States that the governing law is that of the Arab Republic of Egypt.
+    - States that disputes go to arbitration administered by CRCICA (Cairo Regional Centre for International
+      Commercial Arbitration).
+    - States that the seat is Cairo and the language is English.
+    - States that there are three arbitrators.
+    expected_answer: Egyptian law governs. Disputes are finally resolved by CRCICA arbitration, seated
+      in Cairo, in English, before three arbitrators.
+    needs_documents: true
+  - id: T14
+    kind: simple
+    title: Assemble the key data summary
+    task_type: assembly
+    instruction: 'Combine the results of all previous tasks into one structured key-data summary of the
+      contract, with a section for each topic: parties, dates and term, renewal, fees and payment, service
+      credits, termination, liability, confidentiality, governing law and disputes. Do not change any
+      result; present them as given.'
+    depends_on:
+    - T1
+    - T2
+    - T3
+    - T4
+    - T5
+    - T6
+    - T7
+    - T8
+    - T9
+    - T10
+    - T11
+    - T12
+    - T13
+    criteria:
+    - Includes the results of all previous tasks (T1 to T13).
+    - Does not change any value from the previous tasks.
+    - Groups the results under clear topic headings.
+    expected_answer: 'A summary containing: Parties: Delta Logistics S.A.E. (Client), Nile Cloud Systems
+      LLC (Provider). Effective Date 1 March 2026; Initial Term 24 months ending 29 February 2028. Automatic
+      12-month renewals unless 90 days'' written notice; notice deadline for first renewal 1 December
+      2027. Fee EGP 145,000 per quarter in advance, excl. 14% VAT; payable in 30 days, 1.5% monthly interest
+      on overdue amounts; renewal increase max 7% with 60 days'' notice. Maximum service credit about
+      EGP 12,083.33 per month. Termination for convenience after 12 months on 60 days'' notice, fee EGP
+      290,000. Liability cap equal to the prior 12 months'' fees, with carve-outs for confidentiality
+      breach and death or personal injury caused by negligence. Confidentiality during term plus 3 years.
+      Egyptian law; CRCICA arbitration in Cairo, in English, three arbitrators.'
+    needs_documents: false

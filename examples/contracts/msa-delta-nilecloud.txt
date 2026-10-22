@@ -1,0 +1,63 @@
+MASTER SERVICES AGREEMENT
+
+This Master Services Agreement (the "Agreement") is made on 3 February 2026 between:
+
+(1) Delta Logistics S.A.E., a joint stock company registered in Cairo under commercial registration
+no. 184522, with its head office at 12 El Nasr Road, Nasr City, Cairo (the "Client"); and
+
+(2) Nile Cloud Systems LLC, a limited liability company registered in Giza under commercial
+registration no. 99317, with its office at 45 Smart Village, Cairo-Alexandria Desert Road, Giza
+(the "Provider").
+
+1. SERVICES
+1.1 The Provider shall supply the managed fleet-tracking platform, hosting and support services
+described in Schedule 1 (the "Services").
+
+2. TERM AND RENEWAL
+2.1 This Agreement becomes effective on the first day of the calendar month following the date of
+signature (the "Effective Date").
+2.2 The initial term is twenty-four (24) months from the Effective Date (the "Initial Term").
+2.3 After the Initial Term, this Agreement renews automatically for successive twelve (12) month
+periods (each a "Renewal Term") unless either party gives at least ninety (90) days' written notice
+of non-renewal before the end of the then-current term.
+
+3. FEES AND PAYMENT
+3.1 The Client shall pay a service fee of EGP 145,000 (one hundred forty-five thousand Egyptian
+pounds) per calendar quarter, invoiced quarterly in advance.
+3.2 Fees are exclusive of value added tax, which shall be added at the prevailing rate (currently 14%).
+3.3 Invoices are payable within thirty (30) days of the invoice date. Overdue amounts bear interest at
+1.5% per month until paid.
+3.4 Fees are fixed for the Initial Term. For each Renewal Term the Provider may increase fees by no
+more than 7% by written notice given at least sixty (60) days before the Renewal Term begins.
+
+4. SERVICE LEVELS
+4.1 The Provider shall make the platform available at least 99.5% of the time in each calendar month.
+4.2 For each full 0.5 percentage point by which monthly availability falls below 99.5%, the Client is
+entitled to a service credit of 5% of the monthly fee, up to a maximum of 25% of the monthly fee.
+For this purpose the monthly fee is one third of the quarterly fee.
+
+5. TERMINATION
+5.1 Either party may terminate this Agreement immediately by written notice if the other party
+commits a material breach that is not remedied within thirty (30) days of written notice of the breach.
+5.2 After the first twelve (12) months of the Initial Term, the Client may terminate for convenience
+by giving sixty (60) days' written notice and paying an early termination fee equal to two (2)
+quarterly fees.
+
+6. LIABILITY
+6.1 Each party's total liability under this Agreement in any twelve-month period is limited to the
+fees paid or payable by the Client in the twelve (12) months before the event giving rise to the claim.
+6.2 The limit in clause 6.1 does not apply to breach of confidentiality or to death or personal injury
+caused by negligence.
+
+7. CONFIDENTIALITY
+7.1 Each party shall keep the other party's confidential information secret during the term of this
+Agreement and for three (3) years after it ends.
+
+8. GOVERNING LAW AND DISPUTES
+8.1 This Agreement is governed by the laws of the Arab Republic of Egypt.
+8.2 Any dispute shall be finally resolved by arbitration administered by the Cairo Regional Centre
+for International Commercial Arbitration (CRCICA), seated in Cairo, in the English language, before
+three arbitrators.
+
+Signed for and on behalf of Delta Logistics S.A.E.: Hany Fouad, Chief Executive Officer
+Signed for and on behalf of Nile Cloud Systems LLC: Rania Samir, Managing Director

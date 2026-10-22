@@ -1,0 +1,54 @@
+id: executive-summary
+category: summarization
+description: Condense a quarterly operations report into a short executive brief without changing the numbers.
+prompt: |
+  Write a five-bullet executive brief of this quarterly operations report for the CEO.
+  Keep the key numbers exactly as reported, and end with the one decision the CEO needs to make.
+
+  ---
+  Q3 2026 OPERATIONS REPORT, NILE EXPRESS LOGISTICS
+
+  Delivery performance. On-time delivery reached 91.2% this quarter, up from 88.7% in Q2 but still below our
+  95% target. Most late deliveries came from the Alexandria hub, where import shipments were held at customs
+  for an average of 4.5 days after new inspection rules took effect in August.
+
+  Costs. Cost per shipment fell to EGP 182 from EGP 194 in Q2, a 6% reduction, mainly because the new routing
+  software cut empty kilometres. The software also saved about 1,200 driver hours over the quarter.
+
+  Fleet. Fleet utilisation was 78%. Two vehicles were written off after road accidents; no one was injured.
+
+  Outlook and risks. Fuel prices are expected to rise by about 12% next quarter, which would add an estimated
+  EGP 3.1 million to quarterly costs. The board's approval is needed by 15 November to sign a fixed-price fuel
+  contract that would cap this increase at 5%.
+  ---
+grader:
+  type: rubric
+  criteria:
+    - Reports on-time delivery of 91.2%, below the 95% target.
+    - Reports that cost per shipment fell to EGP 182 (a 6% reduction).
+    - Mentions the Alexandria customs delays as the main cause of late deliveries.
+    - Mentions the expected 12% fuel price rise (about EGP 3.1 million a quarter).
+    - Ends with the decision to approve the fixed-price fuel contract by 15 November.
+    - Uses no numbers that differ from the report.
+    - text: Has about five bullets.
+      required: false
+reference: |
+  - On-time delivery rose to 91.2% (Q2: 88.7%) but is still below the 95% target.
+  - Late deliveries come mainly from the Alexandria hub, where customs holds averaged 4.5 days under new rules.
+  - Cost per shipment fell 6% to EGP 182, and the new routing software saved about 1,200 driver hours.
+  - Fleet utilisation was 78%; two vehicles were written off in accidents, with no injuries.
+  - Decision needed: approve a fixed-price fuel contract by 15 November to cap the expected 12% fuel rise
+    (about EGP 3.1 million a quarter) at 5%.
+counterexamples:
+  - |
+    - On-time delivery hit the 95% target.
+    - Cost per shipment fell to EGP 182.
+    - Alexandria customs caused delays.
+    - Fuel prices may rise 12%.
+    - Decision: approve the fuel contract by 15 November.
+  - |
+    - On-time delivery was 91.2%, below the 95% target.
+    - Cost per shipment fell to EGP 182.
+    - Alexandria customs delays caused most late deliveries.
+    - Fleet utilisation was 78%.
+    - Overall a strong quarter; no decisions are needed.

@@ -1,0 +1,43 @@
+id: ticket-routing
+category: classification
+description: Route eight support tickets to the right team, including a few misleading ones.
+prompt: |
+  Route each support ticket to exactly one team, and list each ticket id with its team.
+  - billing: charges, refunds, invoices, subscriptions and payments
+  - delivery: shipping, tracking, addresses, missing or damaged parcels
+  - technical: bugs, crashes, errors and outages in the app or website
+  - account: login, verification codes, profile details, users and permissions
+
+  K1: I was charged twice for my March subscription. Please refund one payment.
+  K2: The app crashes as soon as I open the invoices page, so I can't download my bill.
+  K3: The tracking page says delivered, but nothing reached our office.
+  K4: I changed my phone number and the login code still goes to the old one.
+  K5: Can you deliver order 8812 to our Alexandria branch instead of Cairo?
+  K6: Please give our new finance manager admin access to the company account.
+  K7: Your website shows a 500 error whenever I try to pay my invoice.
+  K8: The parcel arrived but the box was crushed and the screen is cracked.
+grader:
+  type: rubric
+  criteria:
+    - Routes K1 to billing.
+    - Routes K2 to technical (an app crash, even though it mentions invoices).
+    - Routes K3 to delivery.
+    - Routes K4 to account.
+    - Routes K5 to delivery.
+    - Routes K6 to account.
+    - Routes K7 to technical (a website error, even though it mentions paying).
+    - Routes K8 to delivery (a damaged parcel).
+reference: |
+  K1: billing
+  K2: technical
+  K3: delivery
+  K4: account
+  K5: delivery
+  K6: account
+  K7: technical
+  K8: delivery
+counterexamples:
+  - |
+    K1 billing, K2 billing, K3 delivery, K4 account, K5 delivery, K6 account, K7 billing, K8 delivery
+  - |
+    K1 billing, K2 technical, K3 delivery, K4 technical, K5 account, K6 account, K7 technical, K8 technical

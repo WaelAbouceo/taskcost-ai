@@ -1,0 +1,42 @@
+id: hr-policy-question
+category: policy-qa
+description: Answer employee questions from an HR leave policy, including one the policy does not cover.
+prompt: |
+  Answer the three employee questions using only the leave policy below. If the policy does not answer
+  a question, say so and refer the employee to HR; do not guess.
+
+  ---
+  ANNUAL LEAVE POLICY
+  1. Employees with less than 10 years of service receive 21 working days of annual leave per calendar year.
+  2. Employees with 10 or more years of service, or aged 50 or over, receive 30 working days per calendar year.
+     The higher entitlement applies from the date the employee reaches 10 years of service or age 50.
+  3. Up to 7 unused days may be carried over into the next calendar year and must be taken by 31 March;
+     any other unused days are forfeited on 31 December.
+  4. Leave requests must be submitted at least 5 working days in advance through the HR portal.
+  ---
+
+  Questions:
+  1. Ahmed joined the company on 1 March 2017. What is his annual leave entitlement from 1 March 2027?
+  2. Mona is 34 years old, has 6 years of service, and has 12 unused leave days on 31 December 2026.
+     How many can she carry over, and by when must she use them?
+  3. Can employees be paid for unused leave days instead of taking them?
+grader:
+  type: rubric
+  criteria:
+    - Says Ahmed is entitled to 30 working days from 1 March 2027 (he reaches 10 years of service).
+    - Says Mona can carry over 7 days.
+    - Says Mona must use the carried-over days by 31 March 2027.
+    - text: Says Mona forfeits the other 5 days.
+      required: false
+    - Says the policy does not cover payment for unused leave and refers the employee to HR.
+    - Does not invent any rule that is not in the policy.
+reference: |
+  1. Ahmed reaches 10 years of service on 1 March 2027, so from that date he is entitled to 30 working days a year.
+  2. Mona can carry over 7 of her 12 days into 2027 and must take them by 31 March 2027; the other 5 days are forfeited.
+  3. The policy does not say whether unused leave can be paid out, so please check with HR.
+counterexamples:
+  - |
+    1. Ahmed gets 21 days. 2. Mona can carry over 7 days, to be used by 31 March 2027. 3. The policy doesn't cover this; ask HR.
+  - |
+    1. Ahmed gets 30 days from 1 March 2027. 2. Mona can carry over 7 days, to be used by 31 March 2027.
+    3. Yes, unused days are paid at the employee's daily salary rate.

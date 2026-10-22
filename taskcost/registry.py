@@ -1,0 +1,146 @@
+"""Model registry: measured cards for each model (cost per answer, latency, pass rate), built from runs.
+
+Use cases set the latency a model must meet. Latency is judged on the slowest 1 in 10 answers (p90),
+because a chatbot user notices the slow answers, not the average one.
+"""
+
+from __future__ import annotations
+
+import json
+import statistics
+from collections import defaultdict
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any
+
+from .licenses import is_egypt_hosted, is_open_weights
+from .metrics import percentile
+
+USE_CASES: dict[str, dict[str, Any]] = {
+    "chat": {"label": "Chatbot: a person is waiting for the answer", "max_p90_s": 5.0},
+    "realtime": {"label": "Real-time workflow: an application waits for the result", "max_p90_s": 15.0},
+    "batch": {"label": "Batch: results are needed within hours", "max_p90_s": None},
+}
+
+
+@dataclass
+class ModelCard:
+    id: str
+    tier: str
+    runs: int
+    pass_rate: float
+    latency_median_s: float
+    latency_p90_s: float
+    cost_per_answer_egp: float
+    open_weights: bool = False
+    egypt_hosted: bool = False
+
+    def fits(self, use_case: str) -> bool:
+        limit = USE_CASES[use_case]["max_p90_s"]
+        return limit is None or self.latency_p90_s <= limit
+
+    def describe(self) -> str:
+        return (
+            f"{self.tier} tier, {'open-source' if self.open_weights else 'proprietary'}"
+            f"{', hosted in Egypt' if self.egypt_hosted else ''}. "
+            f"About {self.cost_per_answer_egp:.4f} EGP per answer. "
+            f"Typical response {self.latency_median_s:.1f} s; 1 in 10 answers takes over {self.latency_p90_s:.1f} s. "
+            f"Passed {self.pass_rate:.0%} of {self.runs} benchmark answers."
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def load_runs(run_dirs: list[Path]) -> list[dict[str, Any]]:
+    records = []
+    for run_dir in run_dirs:
+        path = run_dir / "attempts.jsonl"
+        if path.is_file():
+            records += [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return records
+
+
+def build_registry(records: list[dict[str, Any]]) -> dict[str, ModelCard]:
+    by_model: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for r in records:
+        if r.get("error_kind") is None:
+            by_model[r["model"]].append(r)
+    cards = {}
+    for model, runs in by_model.items():
+        latencies = [r["latency_s"] for r in runs if r.get("latency_s") is not None]
+        cards[model] = ModelCard(
+            id=model,
+            tier=str(runs[0].get("tier", "")),
+            runs=len(runs),
+            pass_rate=sum(r["passed"] for r in runs) / len(runs),
+            latency_median_s=statistics.median(latencies),
+            latency_p90_s=percentile(latencies, 90),
+            cost_per_answer_egp=statistics.median(r["cost_egp"] for r in runs),
+            open_weights=is_open_weights(model),
+            egypt_hosted=is_egypt_hosted(model),
+        )
+    return dict(sorted(cards.items(), key=lambda item: item[1].cost_per_answer_egp))
+
+
+def preference(card: ModelCard, prefer_open: bool, prefer_egypt: bool = False) -> tuple[bool, bool]:
+    """Sort key for the kind of model: lower is preferred (open-source first, then hosted in Egypt)."""
+    return ((not card.open_weights) if prefer_open else False, (not card.egypt_hosted) if prefer_egypt else False)
+
+
+def rank_candidates(
+    cards: dict[str, ModelCard], use_case: str, prefer_open: bool = True, min_pass_rate: float = 0.0,
+    prefer_egypt: bool = False,
+) -> list[ModelCard]:
+    """Fast-enough, reliable-enough models in the order to try them: open-source first (if preferred), Egypt-hosted
+    first among those (if preferred), then cheapest first. Proprietary models come last, as the fallback."""
+    fitting = [c for c in cards.values() if c.fits(use_case) and c.pass_rate >= min_pass_rate]
+    return sorted(fitting, key=lambda c: (preference(c, prefer_open, prefer_egypt), c.cost_per_answer_egp))
+
+
+def task_results(records: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, float]]:
+    """Per (model, task): runs, passes and mean cost, for working out the right answer."""
+    results: dict[tuple[str, str], dict[str, float]] = defaultdict(lambda: {"runs": 0, "passed": 0, "cost": 0.0})
+    for r in records:
+        if r.get("error_kind") is None:
+            entry = results[(r["model"], r["task_id"])]
+            entry["runs"] += 1
+            entry["passed"] += int(r["passed"])
+            entry["cost"] += r["cost_egp"]
+    return dict(results)
+
+
+def best_model(
+    task_id: str, use_case: str, cards: dict[str, ModelCard], results: dict[tuple[str, str], dict[str, float]],
+    prefer_open: bool = False,
+    prefer_egypt: bool = False,
+) -> str | None:
+    """Ground truth: the cheapest model that passed every run of this task and is fast enough for the use case
+    (of the preferred kind, open-source and Egypt-hosted, if any qualifies)."""
+    candidates = []
+    for model, card in cards.items():
+        entry = results.get((model, task_id))
+        if entry and entry["runs"] and entry["passed"] == entry["runs"] and card.fits(use_case):
+            candidates.append((preference(card, prefer_open, prefer_egypt), entry["cost"] / entry["runs"], model))
+    return min(candidates)[2] if candidates else None
+
+
+def registry_from_results(results_dir: Path) -> tuple[dict[str, ModelCard], dict[tuple[str, str], dict[str, float]]]:
+    """Build the registry from every calibration run and blueprint measurement saved under results_dir.
+
+    Every measured blueprint adds data, so the registry (and Agent 1's picks) improve with use.
+    """
+    dirs = sorted(results_dir.glob("calibration*")) + sorted(results_dir.glob("blueprint-*/verification"))
+    records = load_runs(dirs)
+    return build_registry(records), task_results(records)
+
+
+def save_registry(cards: dict[str, ModelCard], path: Path, sources: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"sources": sources, "use_cases": USE_CASES, "models": [c.to_dict() for c in cards.values()]}
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def load_registry(path: Path) -> dict[str, ModelCard]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return {m["id"]: ModelCard(**m) for m in data["models"]}

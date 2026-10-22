@@ -1,0 +1,102 @@
+- id: classification-ticket-routing
+  category: classification
+  description: Route a batch of support tickets to the right team.
+  prompt: |
+    Route each support ticket to exactly one team, and give the ticket id with its team.
+    - billing: charges, refunds, invoices, subscriptions and payments
+    - shipping: delivery, tracking, addresses and lost or damaged parcels
+    - technical: bugs, crashes and errors in the app or website
+    - account: login, verification codes, profile details, users and permissions
+
+    T1: I updated the app yesterday and now it crashes every time I open the invoices screen, so I can't even see what I was charged.
+    T2: I was charged twice for my March subscription, please refund one of them.
+    T3: The tracking page says delivered but nothing arrived at our building.
+    T4: I can't log in since I changed my phone number; the code still goes to my old number.
+    T5: Can you change the delivery address for order 55812 before it ships? We moved offices.
+    T6: Please add our new finance manager as an admin on our company account.
+  grader:
+    type: rubric
+    criteria:
+      - Routes T1 to technical (it reports an app crash, even though it mentions charges).
+      - Routes T2 to billing.
+      - Routes T3 to shipping.
+      - Routes T4 to account.
+      - Routes T5 to shipping.
+      - Routes T6 to account.
+  reference: |
+    T1: technical
+    T2: billing
+    T3: shipping
+    T4: account
+    T5: shipping
+    T6: account
+  counterexamples:
+    - |
+      T1: billing, T2: billing, T3: shipping, T4: account, T5: shipping, T6: account
+    - |
+      T1: technical, T2: billing, T3: shipping, T4: technical, T5: account, T6: account
+
+- id: classification-arabic-intent
+  category: classification
+  tags: [arabic]
+  description: Classify Egyptian Arabic customer messages by intent.
+  prompt: |
+    Classify the intent of each customer message (written in Egyptian Arabic) as cancel,
+    complaint, inquiry or praise. Give the message id with its intent.
+
+    A1: عايز ألغي الاشتراك من الشهر الجاي لو سمحت
+    A2: الطلب وصل متأخر أسبوع والمنتج مكسور، ده مش مقبول
+    A3: هل عندكم فرع في المنصورة؟
+    A4: شكراً جداً لخدمة العملاء، المشكلة اتحلت في دقايق
+    A5: بقالي ٣ أيام مستني رد على الإيميل ومحدش بيرد
+  grader:
+    type: rubric
+    criteria:
+      - Classifies A1 as cancel.
+      - Classifies A2 as complaint.
+      - Classifies A3 as inquiry.
+      - Classifies A4 as praise.
+      - Classifies A5 as complaint (the customer has waited 3 days without a reply).
+  reference: |
+    A1: cancel
+    A2: complaint
+    A3: inquiry
+    A4: praise
+    A5: complaint
+  counterexamples:
+    - |
+      A1: cancel, A2: complaint, A3: inquiry, A4: praise, A5: inquiry
+    - |
+      A1: complaint, A2: complaint, A3: inquiry, A4: praise, A5: complaint
+
+- id: classification-pii-detection
+  category: classification
+  description: Identify which kinds of personal data an internal email contains.
+  prompt: |
+    Which types of personal data appear in the email below? Consider: name, email address,
+    phone number, IBAN, postal address, date of birth and national ID. List only those present.
+
+    ---
+    Hi team,
+    Please update the payroll record for Youssef Adel. His new IBAN is
+    EG380019000500000000263180002 and his mobile is now +20 100 555 0198.
+    If anything is unclear you can reach him directly at y.adel@example.com.
+    Thanks,
+    HR Operations
+    ---
+  grader:
+    type: rubric
+    criteria:
+      - Identifies the person's name.
+      - Identifies the IBAN.
+      - Identifies the phone number.
+      - Identifies the email address.
+      - Does not claim that a postal address, date of birth or national ID is present.
+  reference: |
+    Present: name (Youssef Adel), IBAN, phone number, email address.
+    Not present: postal address, date of birth, national ID.
+  counterexamples:
+    - |
+      Present: name, IBAN, phone number, national ID.
+    - |
+      Present: name, IBAN, phone number, email address, postal address.

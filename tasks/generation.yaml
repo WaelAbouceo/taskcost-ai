@@ -1,0 +1,60 @@
+- id: generation-arabic-to-english-notice
+  category: generation
+  tags: [arabic]
+  description: Translate a formal Arabic payment notice into business English.
+  prompt: |
+    Translate this formal payment notice into professional business English.
+
+    نود إبلاغكم بأن الدفعة الخاصة بالفاتورة رقم 4517 لم يتم استلامها حتى الآن. يرجى تسوية المبلغ المستحق
+    خلال 7 أيام عمل من تاريخ هذا الخطاب، وإلا سيتم تعليق الخدمة مؤقتاً.
+  grader:
+    type: rubric
+    criteria:
+      - Conveys that payment for invoice 4517 has not been received yet.
+      - Asks for the outstanding amount to be settled within 7 business (working) days of the letter's date.
+      - States that otherwise the service will be temporarily suspended.
+      - Uses a formal, professional business register.
+      - Adds no facts, amounts or penalties that are not in the original.
+  reference: |
+    We would like to inform you that the payment for invoice No. 4517 has not been received yet. Please settle the outstanding amount within 7 business days of the date of this letter; otherwise, the service will be temporarily suspended.
+  counterexamples:
+    - |
+      We would like to inform you that the payment for invoice No. 4517 has not been received yet. Please settle the outstanding amount within 7 months; otherwise, the service will be suspended.
+    - |
+      Payment for invoice No. 4517 has not been received. Please pay within 7 business days or the service will be temporarily suspended and a 15% late fee will be charged.
+    - |
+      hey, invoice 4517 still isn't paid. pay it in a week or we cut you off for a bit.
+
+- id: generation-customer-reply
+  category: generation
+  description: Write a policy-compliant reply to a late-delivery complaint.
+  prompt: |
+    You are a customer support agent for an Egyptian e-commerce company. Write a reply to the
+    customer below. Follow the policy exactly.
+
+    Policy:
+    - Deliveries more than 3 days late get the shipping fee refunded (75 EGP) to the original payment method within 5 business days.
+    - Do not offer a full refund unless the item is damaged.
+    - Always quote the order number. Keep the reply under 150 words.
+
+    Customer message:
+    "My order 55812 arrived 5 days late. This is the second time. I'm really disappointed."
+  grader:
+    type: rubric
+    criteria:
+      - Quotes the order number 55812.
+      - Apologises and acknowledges that this is a repeat problem.
+      - Offers the 75 EGP shipping fee refund to the original payment method within 5 business days.
+      - Does not promise a full refund or any compensation beyond the policy (explaining that a full refund isn't available is fine).
+      - Is professional and empathetic in tone.
+      - text: Is concise, roughly 150 words or fewer.
+        required: false
+  reference: |
+    Dear customer, thank you for letting us know, and I'm sorry that order 55812 arrived 5 days late, especially as this has happened before. That is not the experience we want for you. Because the delivery was more than 3 days late, we are refunding the 75 EGP shipping fee to your original payment method; you will see it within 5 business days. I have also shared your feedback with our delivery team so we can prevent this from happening again. Thank you for your patience, and please reply if there is anything else I can help with.
+  counterexamples:
+    - |
+      Sorry about order 55812 arriving late again. We will refund the full order amount plus the 75 EGP shipping fee right away.
+    - |
+      Order 55812 was late. Delays happen. You'll get 75 EGP back within 5 business days.
+    - |
+      We're sorry your order arrived late again. We'll refund your 75 EGP shipping fee within 5 business days.
