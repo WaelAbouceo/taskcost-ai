@@ -355,6 +355,31 @@ async def _cmd_hosting(args: argparse.Namespace) -> int:
     return 0
 
 
+async def _cmd_review(args: argparse.Namespace) -> int:
+    """Run the log reviewer now: usage facts, flagged signals and recommended enhancements."""
+    from .reviewer import review_usage
+    from .usage import backfill_from_results, has_events
+
+    config = load_config(args.config)
+    if not has_events():
+        print(f"No usage log yet; rebuilt {backfill_from_results(config.output_path)} events from saved runs.")
+    client = _client(180)
+    try:
+        reviewer = (await client.list_models())[config.review_model or config.hosting_model or config.profiler_model]
+        review = await review_usage(client, reviewer, args.days or config.review_days)
+    finally:
+        await client.aclose()
+    print(f"\n{review['summary']}\n")
+    for signal in review["signals"]:
+        print(f"  signal: {signal['metric']} = {signal['value']} ({signal['meaning']})")
+    for i, rec in enumerate(review["recommendations"], start=1):
+        evidence = ", ".join(f"{k} = {v}" for k, v in rec["evidence"].items())
+        print(f"\n{i}. [{rec['priority']}] {rec['title']} ({rec['area']})\n   Why: {rec['why']}\n   Do: {rec['action']}\n   Evidence: {evidence}")
+    print(f"\n{len(review['recommendations'])} recommendations kept, {review['dropped']} dropped for unsupported claims. "
+          f"{review['events']} events, cost {review['cost_egp']:.4f} EGP.")
+    return 0
+
+
 def _cached(client, config, fresh: bool):
     from .cache import Cache, CachedDecisions
 
@@ -461,6 +486,11 @@ def main(argv: list[str] | None = None) -> int:
     hosting = sub.add_parser("hosting", help="Run the hosting agent: where each provider and model runs (normally daily)")
     hosting.add_argument("--config", default="benchmark.yaml")
     hosting.set_defaults(handler=_cmd_hosting)
+
+    review = sub.add_parser("review", help="Run the log reviewer: usage facts and recommended enhancements (normally daily)")
+    review.add_argument("--days", type=float, help="How much of the usage log to read (default: review_days)")
+    review.add_argument("--config", default="benchmark.yaml")
+    review.set_defaults(handler=_cmd_review)
 
     ui = sub.add_parser("ui", help="Start the web interface")
     ui.add_argument("--config", default="benchmark.yaml")

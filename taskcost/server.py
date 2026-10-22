@@ -11,6 +11,7 @@ import hashlib
 import itertools
 import json
 import re
+import sys
 import time
 from contextlib import aclosing, asynccontextmanager
 from dataclasses import dataclass, field, replace
@@ -39,6 +40,8 @@ from .plan import Plan, read_document
 from .quick import quick_compare, quick_summary
 from .hosting import load_snapshot, refresh_hosting, snapshot_age_hours
 from .registry import USE_CASES, registry_from_results
+from .reviewer import latest_review, list_reviews, review_age_hours, review_usage
+from .usage import backfill_from_results, blueprint_event, comparison_event, has_events, log_event
 from .sovereignty import LEVELS, accepted, apply_policy, countries, country_name, model_fit, residency_ranks
 from .report import finalize_run
 from .runner import load_attempts
@@ -144,6 +147,8 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
         try:
             return apply_policy(cfg, helpers)
         except ValueError as exc:
+            if cfg.sovereignty == "strict":
+                log_event("strict_refused", country=cfg.country, reason=str(exc)[:200])
             raise HTTPException(400, str(exc)) from None
 
     def policy_key(cfg) -> dict[str, Any]:
@@ -200,6 +205,10 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
                 job.status = "error"
                 job.error = str(exc) or exc.__class__.__name__
                 job.write(f"Error: {job.error}")
+                if job.error.startswith("Strict mode"):
+                    log_event("strict_refused", job=kind, reason=job.error[:200])
+                else:
+                    log_event("job_failed", job=kind, error=job.error[:200], seconds=round(time.time() - job.started))
 
         task = asyncio.create_task(run())
         running.add(task)
@@ -386,7 +395,15 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
         cfg = policy_config(helpers, country, sovereignty)
         chosen = parse_request(task, use_case, tiers)
         documents = await collect_documents(samples, files)
-        return launch_quick(cfg, task, chosen, trials, use_case, documents, force, rerun_of)
+        if rerun_of:
+            earlier = json.loads((run_folder(rerun_of) / "config.json").read_text(encoding="utf-8"))
+            if earlier.get("use_case") != use_case:
+                log_event("use_case_changed", run=rerun_of, guessed=bool(earlier.get("use_case_guess")),
+                          from_use_case=earlier.get("use_case"), to_use_case=use_case)
+        result = launch_quick(cfg, task, chosen, trials, use_case, documents, force, rerun_of)
+        log_event("request", via="rerun" if rerun_of else "quick", flow="simple", cached=result.get("status") == "cached",
+                  use_case=use_case, country=cfg.country, sovereignty=cfg.sovereignty)
+        return result
 
     @app.post("/api/start")
     async def start_anything(
@@ -417,14 +434,20 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
         if auto:
             use_case = size.get("use_case", DEFAULT_USE_CASE)
             guess = size.get("use_case_probabilities") or {}
+        request_facts = {"via": "start", "level": size.get("level"), "use_case": use_case, "use_case_auto": auto,
+                         "country": cfg.country, "sovereignty": cfg.sovereignty, "documents": len(documents),
+                         "request_words": len(task.split())}
         if size["is_simple"]:
-            return {"kind": "simple", "size": size,
-                    **launch_quick(cfg, task, chosen, trials, use_case, documents, False, "", guess)}
+            result = launch_quick(cfg, task, chosen, trials, use_case, documents, False, "", guess)
+            log_event("request", flow="simple", cached=result.get("status") == "cached", **request_facts)
+            return {"kind": "simple", "size": size, **result}
 
         cache_parts = {"task": " ".join(task.split()).lower(), "documents": documents_key(documents), **policy_key(cfg)}
         hit = cache.get("blueprint", cache_parts, cfg.cache_comparisons_hours * 3600)
         if hit and (cfg.output_path / hit[0] / "blueprint.json").is_file():
+            log_event("request", flow="blueprint", cached=True, **request_facts)
             return {"kind": "blueprint", "size": size, "status": "cached", "result": hit[0]}
+        log_event("request", flow="blueprint", cached=False, **request_facts)
 
         designer_id = cfg.blueprint_model or cfg.design_model
         if not designer_id or designer_id not in models:
@@ -451,6 +474,7 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
                                                      residency_ranks(cfg, cards))
             name = save_blueprint(blueprint, cfg.output_path)
             cache.put("blueprint", cache_parts, name)
+            log_event("blueprint_done", **blueprint_event(blueprint, name, time.time() - job.started))
             job.phase = "done"
             return name
 
@@ -504,6 +528,11 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
                 measured = await verify_blueprint(cfg, blueprint, backend, models, cards, folder / "verification",
                                                   log=job, only_steps=only)
             write_blueprint(folder, measured)
+            v = measured.get("verification") or {}
+            log_event("measured", run=name, steps=len(only) if only else v.get("ai_steps"),
+                      measured_steps=v.get("measured_steps"), own_example=bool(only and len(only) == 1 and any(
+                          (find_step(measured, s) or {}).get("sample", {}).get("source") == "user" for s in only)),
+                      seconds=round(time.time() - job.started, 1))
             job.phase = "done"
             return name
 
@@ -538,6 +567,7 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
             raise HTTPException(400, "Paste an example or upload a .txt, .md or .pdf file.")
         step["user_input"] = content[:20_000]
         write_blueprint(folder, blueprint)
+        log_event("own_example", run=name, step=step_id, task_type=step.get("task_type"), chars=len(content))
         return await verify(name, steps=step_id, helpers=helpers)
 
     @app.get("/api/blueprints/{name}/steps/{step_id}")
@@ -595,6 +625,7 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
                     use_case=use_case, plan=earlier_plan, cache=cache, use_case_guess=use_case_guess,
                 )
             cache.put("comparison", cache_parts, run_dir.name)
+            log_event("comparison_done", **comparison_event(quick_summary(run_dir), time.time() - job.started, bool(rerun_of)))
             job.phase = "done"
             return run_dir.name
 
@@ -671,6 +702,32 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
             "verified_models": sum(1 for r in models if r["verified"]), "cost_egp": snapshot.get("cost_egp"),
         }
 
+    @app.get("/api/insights")
+    async def get_insights() -> dict[str, Any]:
+        """The log reviewer's latest review, and the dates of earlier ones."""
+        return {"latest": latest_review(),
+                "history": [{"name": p.stem, "created_at": json.loads(p.read_text(encoding="utf-8")).get("created_at"),
+                             "recommendations": len(json.loads(p.read_text(encoding="utf-8")).get("recommendations", []))}
+                            for p in list_reviews()[:10]]}
+
+    @app.post("/api/insights/run")
+    async def run_insights() -> dict[str, Any]:
+        if not load_api_key():
+            raise HTTPException(400, "LLM_API_KEY is not set.")
+        return start("review", run_review_agent).to_dict()
+
+    async def run_review_agent(log: Any = None) -> str:
+        cfg = config()
+        if not has_events():
+            backfill_from_results(cfg.output_path)
+        models = await catalog()
+        reviewer_id = cfg.review_model or cfg.hosting_model or cfg.profiler_model
+        if reviewer_id not in models:
+            raise ValueError(f"review model {reviewer_id} is not in the catalog")
+        async with aclosing(open_client(180)) as client:
+            review = await review_usage(client, models[reviewer_id], cfg.review_days, log=log or sys.stderr)
+        return review["created_at"]
+
     async def run_hosting_agent() -> None:
         cfg = config()
         reader = cfg.hosting_model or cfg.profiler_model
@@ -681,14 +738,22 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
             await refresh_hosting(client, reader)
 
     async def hosting_loop() -> None:
-        """The hosting agent runs daily (hosting_refresh_hours) while the server is up."""
+        """The daily agents, while the server is up: the hosting agent (hosting_refresh_hours) and the log
+        reviewer (review_refresh_hours). Each keeps its last result if a run fails."""
         while True:
+            cfg = config()
             age = snapshot_age_hours()
-            if age is None or age >= config().hosting_refresh_hours:
+            if age is None or age >= cfg.hosting_refresh_hours:
                 try:
                     await run_hosting_agent()
-                except Exception as exc:  # keep serving with the last snapshot
+                except Exception as exc:
                     print(f"Hosting agent failed: {exc}")
+            age = review_age_hours()
+            if age is None or age >= cfg.review_refresh_hours:
+                try:
+                    await run_review_agent()
+                except Exception as exc:
+                    print(f"Log reviewer failed: {exc}")
             await asyncio.sleep(HOSTING_CHECK_S)
 
     app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")

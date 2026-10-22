@@ -95,6 +95,7 @@ async function route() {
     else if (view === "compare" && name) await renderAnswer(decodeURIComponent(name));
     else if (view === "blueprint" && name) await renderBlueprint(decodeURIComponent(name));
     else if (view === "hosting") await renderHosting();
+    else if (view === "insights") await renderInsights();
     else await renderHome();
   } catch (error) {
     app.innerHTML = `<div class="notice bad">${esc(error.message)}</div>`;

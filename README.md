@@ -52,6 +52,26 @@ Results are in the app under **Where models run**, with every quote and its sour
 requests to companies they don't name (OpenRouter) make a model's location unverified, which Strict treats as
 outside.
 
+## Insights: the log reviewer agent
+
+The server keeps a usage log (`.cache/usage/events-YYYY-MM.jsonl`, never committed): requests, finished
+comparisons and plans, use cases the user corrected, Strict refusals, measurements, own examples and failed
+jobs. It stores choices, outcomes, costs and durations, never the user's request text (only its length and
+the short title of the concrete task). `taskcost/usage.py`.
+
+The log reviewer (`taskcost/reviewer.py`) runs daily (`review_refresh_hours`), from the **Insights** page, or
+with `uv run taskcost review`:
+
+1. Code computes the usage facts for the last `review_days` days, such as Agent 1's hit rate, how often a
+   guessed use case is corrected, fallbacks, each model's pass, error and too-slow rates per use case, cost
+   split and waiting times. It also flags signals: facts past a threshold that usually call for a change.
+2. A model hosted in Egypt (`review_model`) writes up to six recommendations, with what each fact means and
+   the product's limits (for example the chat speed limit) given alongside.
+3. A recommendation is dropped if it cites a fact that doesn't exist or states a number the facts don't
+   support. The page shows the cited facts' real values next to each one.
+
+On first use, past usage is rebuilt from the runs already saved in `results/`.
+
 ## How it works: from real work to simple tasks
 
 The **simple task** is the unit of economics: one clear job with one answer, done in one AI call and checkable on its own.

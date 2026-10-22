@@ -207,7 +207,17 @@ select { font: inherit; color: var(--text); background: var(--surface); border: 
 select:focus { outline: none; border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); }
 #sovereignty-hint { margin: 8px 2px 22px; }
 .sovereignty-notes { margin: -6px 0 16px; }
-.card.provider { margin-bottom: 12px; }
+.card.provider, .card.recommendation { margin-bottom: 12px; }
+.card.recommendation p { margin: 8px 0; color: var(--mist); }
+.card.recommendation p strong { color: var(--text); }
+.insight-summary p { margin: 0; font-size: 16px; color: var(--mist); }
+.facts-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 14px 0 6px; }
+.facts-grid .card + .card { margin-top: 0; }
+.evidence { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip { font: 12px/1.4 var(--font-mono); padding: 4px 9px; border-radius: 8px; background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line-soft); color: var(--muted); }
+.chip strong { color: var(--accent); font-weight: 500; }
+@media (max-width: 960px) { .facts-grid { grid-template-columns: repeat(2, 1fr); } }
 .provider-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .provider-head .hint { margin-left: auto; }
 ul.quotes { margin: 10px 0 0; padding-left: 18px; color: var(--mist); font-size: 14px; }

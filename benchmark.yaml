@@ -50,6 +50,12 @@ sovereignty: prefer_local
 hosting_model: SovereignEG/Qwen3.8-27B-FP8   # hosted in Egypt, so provider pages are read locally
 hosting_refresh_hours: 24
 
+# Log reviewer agent: reads the usage log (.cache/usage) daily and recommends enhancements, each backed by
+# measured usage facts. Run it now with `taskcost review`; results are on the Insights page.
+review_model: SovereignEG/Qwen3.8-27B-FP8    # hosted in Egypt; it sees usage facts, never raw requests
+review_days: 7
+review_refresh_hours: 24
+
 # Quick compare (the home page): the models every task is tested on. Egypt-hosted open source first; one
 # proprietary model is kept as the fallback and as a reference. Measured on the task library
 # (results/calibration-egypt*, calibration-open-*). Qwen/Qwen3-0.6B is also hosted in Egypt but passed 4/20.
