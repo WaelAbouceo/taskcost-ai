@@ -321,3 +321,9 @@ ol.live-steps { list-style: none; padding: 0; margin: 16px 2px 0; }
 ol.live-steps li { margin: 8px 0; color: var(--muted); display: flex; gap: 10px; align-items: center; }
 ol.live-steps li.done { color: var(--good); }
 ol.live-steps li.now { color: var(--text); font-weight: 600; }
+
+.card.nudge { margin: 18px 0; border-color: var(--warn-line); }
+.card.nudge p { margin: 6px 0 12px; }
+span.button { display: inline-block; font-weight: 600; padding: 11px 20px; border-radius: var(--radius-sm); cursor: pointer; }
+span.button.secondary { background: rgba(255, 255, 255, 0.03); color: var(--text); border: 1px solid rgba(255, 255, 255, 0.15); }
+span.button.secondary:hover { background: var(--hover); }

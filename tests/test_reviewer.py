@@ -65,3 +65,15 @@ def test_review_needs_enough_usage_and_saves_the_review():
     review = asyncio.run(review_usage(Reviewer(), model, days=7))
     assert review["recommendations"][0]["evidence"] == {"model.local.too_slow_rate_chat": 1.0}
     assert latest_review()["created_at"] == review["created_at"] and review["cost_egp"] > 0
+
+
+def test_changes_are_judged_on_usage_before_and_after_them():
+    from taskcost.reviewer import change_effects, effect_metrics
+
+    events = [{**comparison(use_case="chat", recommended="mini", proprietary=True, slow=True), "at": "2026-10-22T10:00:00+00:00"},
+              {**comparison(use_case="chat"), "at": "2026-10-22T14:00:00+00:00"},
+              {**comparison(use_case="chat"), "at": "2026-10-22T15:00:00+00:00", "backfilled": True}]
+    effects = change_effects(events, [{"at": "2026-10-22T12:00:00+00:00", "title": "Fast local chat model"}])
+    chat = effects[0]["metrics"]["outcome.chat_proprietary_rate"]
+    assert chat == {"before": 1.0, "after": 0.0} and effects[0]["comparisons_after"] == 1  # backfilled events don't count
+    assert effect_metrics(effects)["after:2026-10-22T12:00:outcome.chat_proprietary_rate"] == 0.0

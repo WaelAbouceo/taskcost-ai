@@ -302,6 +302,9 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
             "countries": [{"code": code, "name": c["name"], "region": c["region"], "law": c["law"]}
                           for code, c in sorted(countries().items(), key=lambda item: item[1]["name"])],
             "hosting_updated_at": (load_snapshot() or {}).get("updated_at"),
+            # Countries where at least one model runs only inside the country (what Strict can use today).
+            "local_countries": sorted({r["locations"][0] for r in (load_snapshot() or {}).get("models", {}).values()
+                                       if r.get("verified") and len(r.get("locations", [])) == 1}),
             # How each default model fits every covered country, so the page can label them for the user's choice.
             "tier_fit": {model: {code: model_fit(model, code)["fit"] for code in countries()} for _, model in cfg.tiers},
             "tier_locations": {model: model_fit(model, cfg.country)["locations"] for _, model in cfg.tiers},

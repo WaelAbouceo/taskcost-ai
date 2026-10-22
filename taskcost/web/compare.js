@@ -191,6 +191,20 @@ function whyNotChosen(q, best) {
   return `<div class="hint">Not chosen: ${passedOver.map((t) => esc(reason(t))).join("; ")}.</div>`;
 }
 
+// Extraction and summaries depend on the real document; invented examples are cleaner than real ones.
+const DOCUMENT_TASKS = ["extraction", "summarization", "classification"];
+function documentNudge(q) {
+  if (!DOCUMENT_TASKS.includes(q.task_type) || (q.documents || []).length) return "";
+  return `<div class="card nudge">
+      <strong>This was tested on an invented example.</strong>
+      <p class="hint">Real documents are messier (scans, mixed languages, odd layouts). Test the same task on one of
+        yours to see which model still gets it right. .txt, .md or .pdf; it is only used for this test.</p>
+      <label class="secondary-file"><input type="file" id="own-document" accept=".txt,.md,.pdf" hidden>
+        <span class="button secondary">Test on my own document</span></label>
+      <div id="document-progress"></div>
+    </div>`;
+}
+
 // How this result was tailored to the user, from what was learned about them.
 function tailoredNote(q) {
   const t = q.personalization;
@@ -246,6 +260,22 @@ function renderHistory(runs) {
     </section>`;
 }
 
+// Strict mode found nothing allowed: say why, which countries have local models today, and offer Prefer local.
+async function strictRefusal(message, data, modelCount, button, box, endpoint) {
+  const cfg = await getConfig();
+  const local = (cfg.local_countries || []).map((code) => countryOf(cfg, code).name);
+  box.innerHTML = `<div class="notice bad">${esc(message)}
+      <p class="hint">Models hosted inside the country are available today in: ${esc(local.join(", ") || "no country yet")}.
+        Prefer local still puts the closest models first and explains where each one runs.</p>
+      <button type="button" class="secondary" id="use-prefer-local">Use Prefer local instead</button></div>`;
+  button.disabled = false;
+  document.getElementById("use-prefer-local").addEventListener("click", (event) => {
+    document.querySelector("input[name=sovereignty][value=prefer_local]")?.click();
+    data.set("sovereignty", "prefer_local");
+    startComparison(data, modelCount, event.target, box, endpoint);
+  });
+}
+
 async function startComparison(data, modelCount, button, box, endpoint = "/api/start") {
   button.disabled = true;
   box.innerHTML = liveSteps("quick", endpoint === "/api/start" ? "size" : "design");
@@ -266,11 +296,13 @@ async function startComparison(data, modelCount, button, box, endpoint = "/api/s
       },
       onDone: (state) => { location.hash = target + state.result; },
       onError: (state) => {
+        if (/^Strict mode/.test(state.error || "")) return strictRefusal(state.error, data, modelCount, button, box, endpoint);
         box.innerHTML = `<div class="notice bad">${esc(state.error)}</div>`;
         button.disabled = false;
       },
     });
   } catch (error) {
+    if (/^Strict mode/.test(error.message)) return strictRefusal(error.message, data, modelCount, button, box, endpoint);
     box.innerHTML = `<div class="notice bad">${esc(error.message)}</div>`;
     button.disabled = false;
   }
@@ -349,6 +381,7 @@ async function renderAnswer(name) {
       </table>
       <p class="hint">Tap a model to read its answer and what the reviewers checked.</p>
 
+      ${documentNudge(q)}
       ${renderTrace(q.trace)}
 
       <details class="options">
@@ -393,6 +426,19 @@ async function renderAnswer(name) {
   };
   document.getElementById("run-again").addEventListener("click", (event) => {
     startComparison(rerun(q.use_case, true), q.tiers.length, event.target, document.getElementById("rerun-progress"), "/api/quick");
+  });
+  document.getElementById("own-document")?.addEventListener("change", (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const data = new FormData();
+    data.set("task", q.request);
+    data.set("tiers", JSON.stringify(q.tiers.filter((t) => t.tier !== "Agent 1 pick").map((t) => ({ tier: t.tier, model: t.model }))));
+    data.set("trials", String(q.trials || 1));
+    data.set("use_case", q.use_case);
+    if (q.sovereignty) { data.set("country", q.sovereignty.country); data.set("sovereignty", q.sovereignty.level); }
+    data.set("client", clientId());
+    data.append("files", file);
+    startComparison(data, q.tiers.length, event.target, document.getElementById("document-progress"), "/api/quick");
   });
   app.querySelectorAll("[data-use-case]").forEach((button) => button.addEventListener("click", () => {
     startComparison(rerun(button.dataset.useCase, false), q.tiers.length, button, document.getElementById("use-progress"), "/api/quick");

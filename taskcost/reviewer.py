@@ -41,6 +41,9 @@ Rules
 - "action" is one concrete change someone can make, such as a setting, a default model, a task to add,
   a page change or a measurement to run.
 - If the metrics are too thin to support a recommendation, leave it out.
+- recent_changes lists what was changed in the product and when, with the facts before and after each change.
+  Do not recommend something a recent change already did; instead judge whether it worked, citing the
+  "after:<time>:<metric>" facts, and say when the after side has too few comparisons to tell.
 - area is one of: {", ".join(AREAS)}. priority is high, medium or low.
 Reply with JSON only:
 {{"summary": "two sentences on how the tool is being used", "recommendations": [{{"title": "...", "area": "...",
@@ -164,7 +167,7 @@ METRIC_HELP = {
 }
 PRODUCT_FACTS = (
     "Only models hosted on SovereignEG's GPUs in Egypt are local for Egyptian users; there are no local models elsewhere. "
-    "The Egypt-hosted model is too slow for chatbots (its slowest answers take about 12 seconds; chat allows 5). "
+    "The Egypt-hosted Qwen has a no-reasoning variant (@instant) that is fast enough for chatbots; the default one is not. "
     "Agent 1 recommends from measured models only; users can rerun a comparison with a different use case."
 )
 
@@ -193,6 +196,60 @@ SIGNALS = [
     ("blueprint.unpriced_step_rate", 0.1, ">", "plan steps often have no model fast enough"),
     ("blueprint.measured_share", 0.2, "<", "plans are rarely measured, so their costs stay estimates"),
 ]
+
+
+# The facts compared before and after each product change.
+EFFECT_METRICS = (
+    "outcome.chat_proprietary_rate", "outcome.proprietary_fallback_rate", "outcome.no_winner_rate",
+    "agent1.best_rate", "cost.avg_per_comparison_egp", "time.median_comparison_s", "use_case.override_rate",
+    "blueprint.measured_share", "errors.failed_jobs",
+)
+MAX_CHANGES = 5
+
+
+def recent_changes(days: float) -> list[dict[str, str]]:
+    """Product changes in the period, newest first, from the git history (empty without git)."""
+    import subprocess
+
+    try:
+        out = subprocess.run(["git", "log", f"--since={int(days * 24)} hours ago", "--format=%cI|%s"],
+                             cwd=ROOT, capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    changes = []
+    for line in out.splitlines():
+        at, _, title = line.partition("|")
+        if at and title:
+            changes.append({"at": datetime.fromisoformat(at).astimezone(timezone.utc).isoformat(), "title": title.strip()})
+    return changes[:MAX_CHANGES]
+
+
+def change_effects(events: list[dict[str, Any]], changes: list[dict[str, str]]) -> list[dict[str, Any]]:
+    """For each change: the key facts on the usage before it and after it, with how many comparisons each side has."""
+    effects = []
+    for change in changes:
+        before = compute_metrics([e for e in events if e["at"] < change["at"]])
+        after = compute_metrics([e for e in events if e["at"] >= change["at"] and not e.get("backfilled")])
+        effects.append({
+            **change,
+            "comparisons_before": before.get("activity.comparisons", 0), "comparisons_after": after.get("activity.comparisons", 0),
+            "blueprints_after": after.get("activity.blueprints", 0),
+            "metrics": {k: {"before": before.get(k), "after": after.get(k)} for k in EFFECT_METRICS
+                        if before.get(k) is not None or after.get(k) is not None},
+        })
+    return effects
+
+
+def effect_metrics(effects: list[dict[str, Any]]) -> dict[str, Any]:
+    """Facts after each change as citable metrics, keyed "after:<change time>:<metric>"."""
+    out: dict[str, Any] = {}
+    for effect in effects:
+        stamp = effect["at"][:16]
+        out[f"after:{stamp}:activity.comparisons"] = effect["comparisons_after"]
+        for key, values in effect["metrics"].items():
+            if values["after"] is not None:
+                out[f"after:{stamp}:{key}"] = values["after"]
+    return out
 
 
 def signals(metrics: dict[str, Any]) -> list[dict[str, Any]]:
@@ -253,9 +310,11 @@ async def review_usage(backend: ChatBackend, reviewer: ModelInfo, days: float = 
     events = load_events(days)
     metrics = compute_metrics(events)
     flagged = signals(metrics)
+    effects = change_effects(events, recent_changes(days))
+    metrics.update(effect_metrics(effects))
     review: dict[str, Any] = {
         "created_at": datetime.now(timezone.utc).isoformat(), "days": days, "events": len(events),
-        "reviewer_model": reviewer.id, "metrics": metrics, "signals": flagged,
+        "reviewer_model": reviewer.id, "metrics": metrics, "signals": flagged, "changes": effects,
         "summary": "", "recommendations": [], "dropped": 0, "cost_egp": 0.0,
     }
     activity = metrics.get("activity.comparisons", 0) + metrics.get("activity.blueprints", 0)
@@ -264,6 +323,8 @@ async def review_usage(backend: ChatBackend, reviewer: ModelInfo, days: float = 
     else:
         print(f"Reviewing {len(events)} events from the last {days:g} days with {reviewer.id}...", file=log)
         payload = {"product_facts": PRODUCT_FACTS, "metric_meanings": metric_help(metrics),
+                   "recent_changes": [{k: e[k] for k in ("at", "title", "comparisons_before", "comparisons_after", "metrics")}
+                                      for e in effects],
                    "metrics": metrics, "signals": flagged}
         messages = [{"role": "system", "content": REVIEW_SYSTEM},
                     {"role": "user", "content": json.dumps(payload, ensure_ascii=False, indent=1)}]

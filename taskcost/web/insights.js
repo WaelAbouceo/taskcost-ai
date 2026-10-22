@@ -26,6 +26,37 @@ const KEY_FACTS = [
   ["sovereignty.strict_refusals", "Strict refusals"],
 ];
 
+const EFFECT_LABELS = {
+  "outcome.chat_proprietary_rate": "Chatbot tasks ending on a proprietary model",
+  "outcome.proprietary_fallback_rate": "All tasks ending on a proprietary model",
+  "outcome.no_winner_rate": "No model qualified",
+  "agent1.best_rate": "Agent 1 right",
+  "cost.avg_per_comparison_egp": "Cost per comparison",
+  "time.median_comparison_s": "Typical wait",
+  "use_case.override_rate": "Use case corrected by users",
+  "blueprint.measured_share": "Plans measured",
+  "errors.failed_jobs": "Failed jobs",
+};
+
+// Each recent change, and the key facts before and after it (computed by code, not the reviewer).
+function changesTable(changes) {
+  if (!changes?.length) return "";
+  return `<h2>What changed, and did it work?</h2>
+    <div class="table-wrap"><table>
+      <tr><th>Change</th><th>Before → after</th></tr>
+      ${changes.map((c) => {
+        const rows = Object.entries(c.metrics).filter(([, v]) => v.after != null);
+        const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+        const since = c.comparisons_after + (c.blueprints_after || 0);
+        return `<tr><td><strong>${esc(c.title)}</strong><div class="hint">${esc(timeAgo(c.at))} ·
+            ${plural(c.comparisons_after, "comparison")} and ${plural(c.blueprints_after || 0, "plan")} since${since < 5 ? " (too few to tell yet)" : ""}</div></td>
+          <td>${rows.length ? rows.map(([key, v]) => `<div>${esc(EFFECT_LABELS[key] || key)}:
+            ${v.before == null ? "—" : metricValue(key, v.before)} → <strong>${metricValue(key, v.after)}</strong></div>`).join("")
+            : `<span class="hint">No usage since this change yet.</span>`}</td></tr>`;
+      }).join("")}
+    </table></div>`;
+}
+
 async function renderInsights() {
   const { latest: r, history } = await api("/api/insights");
   const facts = r ? KEY_FACTS.filter(([key]) => r.metrics[key] != null) : [];
@@ -42,6 +73,7 @@ async function renderInsights() {
         ${r.summary ? `<div class="card insight-summary"><p>${esc(r.summary)}</p></div>` : ""}
         ${facts.length ? `<div class="facts-grid">${facts.map(([key, label]) => `<div class="card stat">
           <div class="label">${esc(label)}</div><div class="value">${metricValue(key, r.metrics[key])}</div></div>`).join("")}</div>` : ""}
+        ${changesTable(r.changes)}
         <h2>Recommendations</h2>
         ${r.recommendations.length ? r.recommendations.map((rec, i) => `<div class="card recommendation">
             <div class="provider-head"><h3>${i + 1}. ${esc(rec.title)}</h3>
