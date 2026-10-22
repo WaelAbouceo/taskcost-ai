@@ -191,7 +191,7 @@ async function renderBlueprint(name) {
   document.getElementById("save-volumes").addEventListener("click", async (event) => {
     event.target.disabled = true;
     const volumes = Object.fromEntries(aiSteps.map((s) => [s.id, volumeOf(s)]));
-    await api(`/api/blueprints/${encodeURIComponent(name)}/volumes`, {
+    await api(`/api/blueprints/${encodeURIComponent(name)}/volumes?client=${encodeURIComponent(clientId())}`, {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(volumes),
     });
     renderBlueprint(name);

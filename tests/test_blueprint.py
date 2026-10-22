@@ -65,7 +65,7 @@ class FakeBackend:
 def test_sizing_also_guesses_the_use_case():
     class Backend(FakeBackend):
         async def decide(self, model, state, questions):
-            assert set(questions) == {"level", "use_case"}
+            assert set(questions) == {"level", "use_case", "domain"}
             return Decision({"level": {"choice": "simple", "probabilities": {"simple": 0.9}},
                              "use_case": {"choice": "chat", "probabilities": {"chat": 0.8, "batch": 0.2}}}, 200, 0.5)
 

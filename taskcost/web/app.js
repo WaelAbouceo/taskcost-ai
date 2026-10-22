@@ -7,6 +7,19 @@ const esc = (value) =>
 const egp = (value) => (value == null ? "n/a" : Number(value).toFixed(4));
 const pct = (value) => (value == null ? "n/a" : `${Math.round(value * 100)}%`);
 const when = (iso) => (iso ? new Date(iso).toLocaleString() : "");
+// An anonymous id for this browser, so the tool can learn this user's industry, language, usual use case and
+// scale from their own requests (see /api/profile). No name, email or login.
+const CLIENT_KEY = "taskcost.client";
+function clientId() {
+  let id = localStorage.getItem(CLIENT_KEY);
+  if (!id) {
+    id = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`).replace(/[^A-Za-z0-9-]/g, "");
+    localStorage.setItem(CLIENT_KEY, id);
+  }
+  return id;
+}
+const getProfile = () => api(`/api/profile?client=${encodeURIComponent(clientId())}`).catch(() => ({ requests: 0 }));
+
 // ---------- sovereignty: the user's country and how strictly their data must stay close ----------
 
 const COUNTRY_KEY = "taskcost.country";
@@ -164,6 +177,7 @@ async function renderNew() {
     event.preventDefault();
     const data = new FormData(form);
     if (!form.files.files.length) data.delete("files");
+    data.set("client", clientId());
     data.set("country", chosenCountry(cfg));
     data.set("sovereignty", chosenLevel(cfg));
     const button = form.querySelector("button");

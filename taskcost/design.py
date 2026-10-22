@@ -138,10 +138,14 @@ async def design_simple_task(
     request: str,
     documents: dict[str, Path],
     base_dir: Path,
+    context: str = "",
 ) -> Plan:
-    """Make a single concrete, checkable simple task from a (possibly vague) request."""
+    """Make a single concrete, checkable simple task from a (possibly vague) request. `context` describes the
+    user (inferred from their earlier use) so the scenario looks like their work."""
     texts = {doc_id: read_document(path) for doc_id, path in documents.items()}
     user_parts = [f"## Request\n{request}"]
+    if context:
+        user_parts.append(f"## About the user (inferred from their earlier requests)\n{context}")
     if texts:
         user_parts.append("## Documents")
         user_parts += [f"### {doc_id}\n{text}" for doc_id, text in texts.items()]

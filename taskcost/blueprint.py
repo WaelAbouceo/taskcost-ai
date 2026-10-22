@@ -59,7 +59,25 @@ SIZE_QUESTION = {
             "batch": "Runs in the background and is needed within minutes or hours, such as drafting emails, reading documents, summarising or reports",
         },
     },
+    "domain": {
+        "type": "choice",
+        "instructions": "Which industry or business area is the `request` most likely from?",
+        "criteria": {
+            "retail_ecommerce": "Shops, online stores, orders, deliveries to consumers",
+            "logistics": "Shipping, freight, warehouses, fleets, supply chain",
+            "banking_finance": "Banks, payments, loans, insurance, accounting and finance teams",
+            "telecom": "Mobile, internet and telecom operators",
+            "healthcare": "Hospitals, clinics, pharmacies, medical records",
+            "government": "Ministries, public services, permits, citizens",
+            "manufacturing": "Factories, production, quality, procurement of materials",
+            "hr": "Recruiting, employees, payroll, HR policies",
+            "legal": "Contracts, compliance, legal review",
+            "education": "Schools, universities, training",
+            "general": "No particular industry",
+        },
+    },
 }
+DOMAINS = tuple(SIZE_QUESTION["domain"]["criteria"])
 DEFAULT_USE_CASE = "realtime"
 
 
@@ -87,6 +105,9 @@ async def size_request(backend: Backend, jev: ModelInfo, request: str) -> dict[s
         "is_simple": choice == "simple" and probabilities.get("simple", 0.0) >= 0.6,
         "use_case": use_case if use_case in USE_CASES else DEFAULT_USE_CASE,
         "use_case_probabilities": {k: float(v) for k, v in (use.get("probabilities") or {}).items()},
+        "domain": str((decision.answers.get("domain") or {}).get("choice") or "general"),
+        "domain_scores": {k: round(float(v), 3) for k, v in ((decision.answers.get("domain") or {}).get("probabilities") or {}).items()
+                          if float(v) >= 0.05},
         "cached": decision.cached,
     }
 
@@ -139,9 +160,11 @@ Reply with JSON only:
 
 
 async def design_blueprint(
-    backend: Backend, designer: ModelInfo, request: str, documents: dict[str, str] | None = None,
+    backend: Backend, designer: ModelInfo, request: str, documents: dict[str, str] | None = None, context: str = "",
 ) -> dict[str, Any]:
     parts = [f"## Request\n{request}", f"## Reference: standard enterprise processes\n{knowledge_summary(load_knowledge())}"]
+    if context:
+        parts.insert(1, f"## About the user (inferred from their earlier requests)\n{context}")
     if documents:
         parts.append("## Documents provided by the user")
         parts += [f"### {name}\n{text[:6000]}" for name, text in documents.items()]

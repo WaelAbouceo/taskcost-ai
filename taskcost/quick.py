@@ -41,6 +41,7 @@ async def quick_compare(
     plan: Plan | None = None,
     cache: Cache | None = None,
     use_case_guess: dict[str, float] | None = None,
+    personalization: dict[str, Any] | None = None,
 ) -> Path:
     """Run the whole quick flow and return the results folder.
 
@@ -78,7 +79,8 @@ async def quick_compare(
     if plan is None:
         print(f"Understanding the task with {designer_id}...", file=log)
         plans_dir.mkdir(parents=True, exist_ok=True)
-        plan = await design_simple_task(backend, catalog[designer_id], request, documents or {}, plans_dir.resolve())
+        plan = await design_simple_task(backend, catalog[designer_id], request, documents or {}, plans_dir.resolve(),
+                                        context=(personalization or {}).get("context", ""))
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         plan.reviewed = True
         plan.save(plans_dir / f"quick-{slug(plan.root.title, 'task')}-{stamp}.yaml")
@@ -110,6 +112,7 @@ async def quick_compare(
             "tiers": [{"tier": seen[m], "model": m} for m in seen],
             "use_case": use_case,
             "use_case_guess": use_case_guess,
+            "personalization": personalization,
             "recommendation": recommendation,
             "registry": registry,
             "skipped_tiers": skipped,
@@ -233,6 +236,7 @@ def quick_summary(run_dir: Path) -> dict[str, Any]:
         "use_case": use_case,
         "use_case_label": USE_CASES.get(use_case, USE_CASES["batch"])["label"],
         "use_case_guess": config.get("use_case_guess"),
+        "personalization": config.get("personalization"),
         "latency_budget_s": budget,
         "advice": advice,
         "request": config.get("request"),

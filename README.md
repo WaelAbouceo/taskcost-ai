@@ -63,6 +63,25 @@ Chatbot speed is judged on chatbot-length answers (up to `SHORT_ANSWER_TOKENS`, 
 at least `MIN_SHORT_RUNS` (8) of them measured. A long report is slow from any model, and a chatbot rarely
 writes one. Otherwise, and for other use cases, every answer counts (`taskcost/registry.py`).
 
+## Learning about each user (without asking)
+
+Each browser gets an anonymous id (no login). From that user's own requests and choices, `taskcost/user_profile.py`
+infers:
+- their industry, from the sizing question's industry probabilities added up across requests;
+- their language, from their text;
+- their scale, from volumes they mention ("500 invoices a month", "3000 شحنة في الشهر") or set in a plan;
+- their usual use case, where a correction on the result page counts double;
+- whether they like each model tested 3 times, and their country and sovereignty level.
+
+After two requests the profile tailors results:
+- the concrete test is written for their industry and language (`design_context`);
+- a use case their words leave unclear follows their usual one;
+- results show the monthly cost at their usual scale;
+- "test 3 times" is pre-ticked if that's their habit.
+
+The home page shows "What we've learned about you" with **Forget me**, which deletes that user's events
+(`DELETE /api/profile`). Raw request text is never stored.
+
 ## Insights: the log reviewer agent
 
 The server keeps a usage log (`.cache/usage/events-YYYY-MM.jsonl`, never committed): requests, finished

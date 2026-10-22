@@ -208,6 +208,9 @@ select:focus { outline: none; border-color: var(--accent-line); box-shadow: 0 0 
 #sovereignty-hint { margin: 8px 2px 22px; }
 .sovereignty-notes { margin: -6px 0 16px; }
 .card.provider, .card.recommendation { margin-bottom: 12px; }
+.card.profile-card { margin-top: 26px; border-color: var(--accent-line); }
+.card.profile-card p { margin: 8px 0; color: var(--mist); }
+.tailored { margin: -6px 0 12px; color: var(--accent); }
 .card.recommendation p { margin: 8px 0; color: var(--mist); }
 .card.recommendation p strong { color: var(--text); }
 .insight-summary p { margin: 0; font-size: 16px; color: var(--mist); }

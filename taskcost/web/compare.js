@@ -27,7 +27,7 @@ function timeAgo(iso) {
 }
 
 async function renderHome() {
-  const [cfg, runs] = await Promise.all([getConfig(), api("/api/results")]);
+  const [cfg, runs, profile] = await Promise.all([getConfig(), api("/api/results"), getProfile()]);
   const recent = runs.filter((r) => r.quick || r.kind === "blueprint").slice(0, 5);
   app.innerHTML = `
     <section class="simple">
@@ -61,9 +61,12 @@ async function renderHome() {
               <input type="text" class="tier-model" data-tier="${esc(t.tier)}" value="${esc(t.model)}" list="catalog"></label>`).join("")}
           </div>
           <datalist id="catalog">${cfg.catalog.map((id) => `<option value="${esc(id)}">`).join("")}</datalist>
-          <label class="check"><input type="checkbox" name="reliable"> Test each model 3 times (slower, more reliable)</label>
+          <label class="check"><input type="checkbox" name="reliable" ${profile.prefers_reliability ? "checked" : ""}>
+            Test each model 3 times (slower, more reliable)${profile.prefers_reliability ? ` <span class="hint">· you usually do</span>` : ""}</label>
         </details>
       </form>
+
+      ${profileCard(profile)}
 
       ${recent.length ? `<div class="recent"><h3>Recent</h3>
         ${recent.map((r) => `<a href="${historyLink(r)}"><span>${esc(r.title)}</span>
@@ -84,6 +87,11 @@ async function renderHome() {
       el.innerHTML = level === "open" ? "" : residencyBadge(fit, cfg.tier_locations[el.dataset.fit] || [], countryOf(cfg, code).name);
     });
   };
+  document.getElementById("forget-me")?.addEventListener("click", async () => {
+    await api(`/api/profile?client=${encodeURIComponent(clientId())}`, { method: "DELETE" });
+    localStorage.removeItem(CLIENT_KEY);
+    renderHome();
+  });
   form.country.addEventListener("change", showSovereignty);
   form.querySelectorAll("input[name=sovereignty]").forEach((r) => r.addEventListener("change", showSovereignty));
   showSovereignty();
@@ -100,9 +108,39 @@ async function renderHome() {
     data.set("trials", form.reliable.checked ? "3" : "1");
     data.set("country", form.country.value);
     data.set("sovereignty", form.sovereignty.value);
+    data.set("client", clientId());
     [...form.files.files].forEach((file) => data.append("files", file));
     await startComparison(data, tiers.length, form.querySelector("button[type=submit]"), document.getElementById("quick-progress"));
   });
+}
+
+const DOMAIN_NAMES = {
+  retail_ecommerce: "retail and e-commerce", logistics: "logistics", banking_finance: "banking and finance", telecom: "telecom",
+  healthcare: "healthcare", government: "government", manufacturing: "manufacturing", hr: "HR", legal: "legal", education: "education",
+};
+const USE_NAMES = { chat: "chatbot", realtime: "workflow", batch: "batch" };
+
+// What the tool has learned from this user's own requests and choices, and how it uses it.
+function profileFacts(p) {
+  return [
+    p.domain && `you work in ${DOMAIN_NAMES[p.domain] || p.domain}`,
+    p.language === "Arabic" && "you write in Arabic",
+    p.usual_use_case && `your tasks are usually ${USE_NAMES[p.usual_use_case]} tasks`,
+    p.monthly_volume && `you handle about ${p.monthly_volume.toLocaleString()} a month`,
+    p.prefers_reliability && "you like each model tested 3 times",
+  ].filter(Boolean);
+}
+
+function profileCard(p) {
+  const facts = profileFacts(p);
+  if (!p.tailoring || !facts.length) return "";
+  return `<div class="card profile-card" id="profile-card">
+      <div class="provider-head"><strong>What we've learned about you</strong>
+        <span class="hint">from your ${p.requests} requests in this browser</span></div>
+      <p>It looks like ${esc(facts.join(", "))}. We use this to write tests that look like your work, to settle an
+        unclear use case, and to show costs at your scale.</p>
+      <button type="button" class="link" id="forget-me">Forget me</button>
+    </div>`;
 }
 
 // Where the user is, and how strictly their data must stay there.
@@ -151,6 +189,27 @@ function whyNotChosen(q, best) {
     return `${t.model}: ${label.replace(/^\S+\s/, "").toLowerCase()}${why ? ` (${why})` : ""}`;
   };
   return `<div class="hint">Not chosen: ${passedOver.map((t) => esc(reason(t))).join("; ")}.</div>`;
+}
+
+// How this result was tailored to the user, from what was learned about them.
+function tailoredNote(q) {
+  const t = q.personalization;
+  if (!t) return "";
+  const p = t.profile || {};
+  const made = [p.domain && `a ${DOMAIN_NAMES[p.domain] || p.domain} task`, p.language === "Arabic" && "in Arabic"].filter(Boolean);
+  const notes = [
+    t.context && made.length ? `Tailored to you: we wrote the test as ${made.join(" ")}, like your earlier requests.` : "",
+    t.use_case_note || "",
+  ].filter(Boolean);
+  return notes.length ? `<p class="hint tailored">${notes.map(esc).join(" ")}</p>` : "";
+}
+
+// The recommended model's cost per month at the user's usual volume, when it's known.
+function atYourScale(best, profile) {
+  if (!profile.monthly_volume || best.cost_per_1000_egp == null) return "";
+  const monthly = (best.cost_per_1000_egp / 1000) * profile.monthly_volume;
+  return `<div class="hint">At your usual ${profile.monthly_volume.toLocaleString()} tasks a month: about
+    <strong>${money(monthly)} EGP a month</strong>.</div>`;
 }
 
 const fitBadge = (q, t) => (q.sovereignty?.level === "open" || !t.residency ? ""
@@ -231,7 +290,7 @@ function modelStatus(t) {
 }
 
 async function renderAnswer(name) {
-  const q = await api(`/api/quick/${encodeURIComponent(name)}`);
+  const [q, profile] = await Promise.all([api(`/api/quick/${encodeURIComponent(name)}`), getProfile()]);
   const best = q.recommended ? q.tiers.find((t) => t.tier === q.recommended.tier && t.model === q.recommended.model) : null;
   const useName = (USE_CASES_SHORT[q.use_case] || [q.use_case_label])[0];
 
@@ -249,6 +308,7 @@ async function renderAnswer(name) {
       <p class="hint use-hint">${esc((USE_CASES_SHORT[q.use_case] || ["", ""])[1])}
         ${q.use_case_guess ? "Not right? Pick another: we re-test the same task, so only the speed limit changes." : ""}</p>
       <div id="use-progress"></div>
+      ${tailoredNote(q)}
       ${sovereigntyNotes(q)}
       ${q.test_mode ? `<div class="notice">Test mode: simulated models, not real results.</div>` : ""}
 
@@ -267,6 +327,7 @@ async function renderAnswer(name) {
           ${q.cheapest_correct && q.cheapest_correct.cost_per_1000_egp < best.cost_per_1000_egp
             ? `<div class="hint">Cheapest correct option: ${esc(q.cheapest_correct.model)} (${q.cheapest_correct.open_weights ? "open source" : "proprietary"}${q.cheapest_correct.residency && q.cheapest_correct.residency.fit !== "in_country" ? `, ${esc(FIT_TEXT[q.cheapest_correct.residency.fit][1].toLowerCase())}` : ""})
                at ${money(q.cheapest_correct.cost_per_1000_egp)} EGP per 1,000 tasks.</div>` : ""}
+          ${atYourScale(best, profile)}
           ${whyNotChosen(q, best)}
           ${q.advice?.verdict === "best" ? `<div class="hint">✓ Agent 1 predicted this before testing.</div>` : ""}
         </div>`
@@ -324,6 +385,7 @@ async function renderAnswer(name) {
       data.set("country", q.sovereignty.country);
       data.set("sovereignty", q.sovereignty.level);
     }
+    data.set("client", clientId());
     return data;
   };
   document.getElementById("run-again").addEventListener("click", (event) => {

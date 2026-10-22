@@ -41,6 +41,7 @@ from .quick import quick_compare, quick_summary
 from .hosting import load_snapshot, refresh_hosting, snapshot_age_hours
 from .registry import USE_CASES, registry_from_results
 from .reviewer import latest_review, list_reviews, review_age_hours, review_usage
+from .user_profile import arabic_share, build_profile, valid_client, design_context, forget, stated_monthly_volume, use_case_prior
 from .usage import backfill_from_results, blueprint_event, comparison_event, has_events, log_event
 from .sovereignty import LEVELS, accepted, apply_policy, countries, country_name, model_fit, residency_ranks
 from .report import finalize_run
@@ -391,18 +392,23 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
         helpers: str = Form(default=""),
         country: str = Form(default=""),
         sovereignty: str = Form(default=""),
+        client: str = Form(default=""),
     ) -> dict[str, Any]:
         cfg = policy_config(helpers, country, sovereignty)
+        client = valid_client(client)
         chosen = parse_request(task, use_case, tiers)
         documents = await collect_documents(samples, files)
+        personalization = None
         if rerun_of:
             earlier = json.loads((run_folder(rerun_of) / "config.json").read_text(encoding="utf-8"))
+            personalization = earlier.get("personalization")
             if earlier.get("use_case") != use_case:
-                log_event("use_case_changed", run=rerun_of, guessed=bool(earlier.get("use_case_guess")),
+                log_event("use_case_changed", client=client, run=rerun_of, guessed=bool(earlier.get("use_case_guess")),
                           from_use_case=earlier.get("use_case"), to_use_case=use_case)
-        result = launch_quick(cfg, task, chosen, trials, use_case, documents, force, rerun_of)
-        log_event("request", via="rerun" if rerun_of else "quick", flow="simple", cached=result.get("status") == "cached",
-                  use_case=use_case, country=cfg.country, sovereignty=cfg.sovereignty)
+        result = launch_quick(cfg, task, chosen, trials, use_case, documents, force, rerun_of,
+                              personalization=personalization, client=client)
+        log_event("request", client=client, via="rerun" if rerun_of else "quick", flow="simple",
+                  cached=result.get("status") == "cached", use_case=use_case, country=cfg.country, sovereignty=cfg.sovereignty)
         return result
 
     @app.post("/api/start")
@@ -415,10 +421,13 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
         helpers: str = Form(default=""),
         country: str = Form(default=""),
         sovereignty: str = Form(default=""),
+        client: str = Form(default=""),
     ) -> dict[str, Any]:
         """The Compare button: Agent 1 sizes the request and, unless the user chose one, decides the use case;
-        then it goes to the simple or the blueprint flow (where each AI step has its own use case)."""
+        then it goes to the simple or the blueprint flow (where each AI step has its own use case).
+        What was learned about this user (user_profile.py) tailors the test and an unclear use case."""
         cfg = policy_config(helpers, country, sovereignty)
+        client = valid_client(client)
         auto = use_case in ("", "auto")
         chosen = parse_request(task, DEFAULT_USE_CASE if auto else use_case, tiers)
         documents = await collect_documents([], files)
@@ -430,19 +439,29 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
                 size = await size_request(decider, jev, task) if jev else {"is_simple": True, "level": "simple"}
             except Exception:
                 size = {"is_simple": True, "level": "simple"}
-        guess = None
+        profile = build_profile(client) if client else {}
+        guess, use_case_note = None, None
         if auto:
-            use_case = size.get("use_case", DEFAULT_USE_CASE)
             guess = size.get("use_case_probabilities") or {}
-        request_facts = {"via": "start", "level": size.get("level"), "use_case": use_case, "use_case_auto": auto,
-                         "country": cfg.country, "sovereignty": cfg.sovereignty, "documents": len(documents),
-                         "request_words": len(task.split())}
+            use_case, use_case_note = use_case_prior(profile, size.get("use_case", DEFAULT_USE_CASE), guess)
+        context = design_context(profile)
+        personalization = {"context": context, "use_case_note": use_case_note,
+                           "profile": {k: profile.get(k) for k in ("domain", "language", "usual_use_case", "monthly_volume")}
+                           } if context or use_case_note else None
+        request_facts = {"client": client, "via": "start", "level": size.get("level"), "use_case": use_case,
+                         "use_case_auto": auto, "country": cfg.country, "sovereignty": cfg.sovereignty,
+                         "documents": len(documents), "request_words": len(task.split()), "domain": size.get("domain"),
+                         "domain_scores": size.get("domain_scores"),
+                         "arabic_share": round(arabic_share(task), 2), "monthly_volume": stated_monthly_volume(task),
+                         "tailored": bool(personalization)}
         if size["is_simple"]:
-            result = launch_quick(cfg, task, chosen, trials, use_case, documents, False, "", guess)
+            result = launch_quick(cfg, task, chosen, trials, use_case, documents, False, "", guess,
+                                  personalization=personalization, client=client)
             log_event("request", flow="simple", cached=result.get("status") == "cached", **request_facts)
             return {"kind": "simple", "size": size, **result}
 
-        cache_parts = {"task": " ".join(task.split()).lower(), "documents": documents_key(documents), **policy_key(cfg)}
+        cache_parts = {"task": " ".join(task.split()).lower(), "documents": documents_key(documents), **policy_key(cfg),
+                       "context": context}
         hit = cache.get("blueprint", cache_parts, cfg.cache_comparisons_hours * 3600)
         if hit and (cfg.output_path / hit[0] / "blueprint.json").is_file():
             log_event("request", flow="blueprint", cached=True, **request_facts)
@@ -460,8 +479,9 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
                 job.phase = "design"
                 job.write(f"This looks like a {size['level']}; mapping it to standard enterprise processes...")
                 texts = {name: read_document(path) for name, path in documents.items()}
-                blueprint = await design_blueprint(decider, models[designer_id], task.strip(), texts)
+                blueprint = await design_blueprint(decider, models[designer_id], task.strip(), texts, context=context)
                 blueprint["size"] = size
+                blueprint["personalization"] = personalization
                 blueprint["helper_mode"] = cfg.helper_mode
                 blueprint["sovereignty"] = {"country": cfg.country, "level": cfg.sovereignty,
                                             "notes": list(cfg.sovereignty_notes)}
@@ -474,7 +494,7 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
                                                      residency_ranks(cfg, cards))
             name = save_blueprint(blueprint, cfg.output_path)
             cache.put("blueprint", cache_parts, name)
-            log_event("blueprint_done", **blueprint_event(blueprint, name, time.time() - job.started))
+            log_event("blueprint_done", client=client, **blueprint_event(blueprint, name, time.time() - job.started))
             job.phase = "done"
             return name
 
@@ -539,12 +559,13 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
         return start("verify", work).to_dict()
 
     @app.put("/api/blueprints/{name}/volumes")
-    async def save_volumes(name: str, volumes: dict[str, int]) -> dict[str, Any]:
+    async def save_volumes(name: str, volumes: dict[str, int], client: str = "") -> dict[str, Any]:
         folder = blueprint_folder(name)
         blueprint = load_blueprint(folder)
         for step in ai_steps(blueprint):
             if step["id"] in volumes:
                 step["monthly_volume"] = max(0, int(volumes[step["id"]]))
+        log_event("volumes_saved", client=valid_client(client), run=name, volumes=[max(0, int(v)) for v in volumes.values()])
         write_blueprint(folder, recompute_totals(blueprint))
         return {"name": name, **blueprint}
 
@@ -597,8 +618,10 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
         return chosen
 
     def launch_quick(cfg, task: str, chosen, trials: int, use_case: str, documents, force: bool, rerun_of: str,
-                     use_case_guess: dict[str, float] | None = None) -> dict[str, Any]:
+                     use_case_guess: dict[str, float] | None = None, personalization: dict[str, Any] | None = None,
+                     client: str = "") -> dict[str, Any]:
         cache_parts = {
+            "context": (personalization or {}).get("context", ""),
             "task": " ".join(task.split()).lower(),
             "tiers": chosen,
             "trials": trials,
@@ -623,9 +646,11 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
                     cfg, task.strip(), chosen, backend, plans_dir,
                     documents=documents, trials=trials, log=job, progress=progress,
                     use_case=use_case, plan=earlier_plan, cache=cache, use_case_guess=use_case_guess,
+                    personalization=personalization,
                 )
             cache.put("comparison", cache_parts, run_dir.name)
-            log_event("comparison_done", **comparison_event(quick_summary(run_dir), time.time() - job.started, bool(rerun_of)))
+            log_event("comparison_done", client=client,
+                      **comparison_event(quick_summary(run_dir), time.time() - job.started, bool(rerun_of)))
             job.phase = "done"
             return run_dir.name
 
@@ -701,6 +726,18 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
             "egypt_hosted": sorted(m for m, r in snapshot["models"].items() if r["egypt_hosted"]),
             "verified_models": sum(1 for r in models if r["verified"]), "cost_egp": snapshot.get("cost_egp"),
         }
+
+    @app.get("/api/profile")
+    async def get_profile(client: str) -> dict[str, Any]:
+        """What the tool has learned about this browser's user, from their own requests and choices."""
+        client = valid_client(client)
+        return build_profile(client) if client else {"requests": 0}
+
+    @app.delete("/api/profile")
+    async def delete_profile(client: str) -> dict[str, Any]:
+        """Forget this user: delete their events from the usage log."""
+        client = valid_client(client)
+        return {"removed": forget(client) if client else 0}
 
     @app.get("/api/insights")
     async def get_insights() -> dict[str, Any]:

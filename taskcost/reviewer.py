@@ -67,6 +67,9 @@ def compute_metrics(events: list[dict[str, Any]]) -> dict[str, Any]:
         "activity.reruns": sum(1 for c in comparisons if c.get("rerun")),
         "activity.requests": len(requests),
         "activity.cached_share": _rate(sum(1 for r in requests if r.get("cached")), len(requests)),
+        "users.distinct": len({e.get("client") for e in events if e.get("client")}),
+        "users.tailored_share": _rate(sum(1 for r in requests if r.get("tailored")),
+                                      sum(1 for r in requests if r.get("via") == "start")),
         "errors.failed_jobs": len(by_kind.get("job_failed", [])),
         "errors.failed_by_kind": dict(Counter(e.get("job") for e in by_kind.get("job_failed", []))),
         "sovereignty.strict_refusals": len(by_kind.get("strict_refused", [])),
@@ -153,6 +156,7 @@ METRIC_HELP = {
     "time.": "seconds from pressing Compare to the result",
     "blueprint.": "plans for workflows and systems: AI steps per plan, median monthly cost, share of steps with no model fast enough, share of plans measured on examples rather than estimated",
     "errors.": "jobs that failed with an error",
+    "users.": "distinct anonymous users (browsers), and the share of their requests tailored to what was learned about them (industry, language, usual use case)",
 }
 PRODUCT_FACTS = (
     "Only models hosted on SovereignEG's GPUs in Egypt are local for Egyptian users; there are no local models elsewhere. "
