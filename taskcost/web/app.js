@@ -93,6 +93,43 @@ function criterionText(criterion) {
   return typeof criterion === "string" ? criterion : `(optional) ${criterion.text}`;
 }
 
+// ---------- under the hood: every step behind a result ----------
+
+const secs = (s) => (s == null ? "" : s < 10 ? `${s.toFixed(1)} s` : `${Math.round(s)} s`);
+const fitText = (fit) => (fit ? residencyBadge(fit.fit, fit.locations, "") : "");
+
+// "How we got this answer": the steps, the model behind each (and where it runs), time and cost.
+function renderTrace(trace, open = false) {
+  if (!trace?.steps?.length) return "";
+  const data = trace.data || {};
+  const where = data.total ? ` · your task reached ${data.local} of ${data.total} models in your country or places your law allows` : "";
+  return `<details class="options trace" ${open ? "open" : ""}>
+      <summary>How we got this answer <span class="hint">${trace.steps.length} steps · ${secs(trace.seconds)} · ${egp(trace.cost_egp)} EGP${where}</span></summary>
+      <ol class="trace-steps">${trace.steps.map((s) => `<li>
+        <div class="trace-head"><strong>${esc(s.title)}</strong>
+          <span class="hint">${[secs(s.seconds), s.cost_egp != null ? `${egp(s.cost_egp)} EGP` : "", s.cached ? "from cache" : ""].filter(Boolean).join(" · ")}</span></div>
+        ${s.model ? `<div class="trace-model"><code>${esc(s.model)}</code> ${fitText(s.fit)}</div>` : ""}
+        <p>${esc(s.detail)}</p>
+        ${s.items?.length ? `<ul class="trace-items">${s.items.map((i) => `<li><code>${esc(i.model)}</code> ${fitText(i.fit)}
+          <span class="hint">${[i.detail, secs(i.seconds), i.cost_egp != null ? `${egp(i.cost_egp)} EGP` : ""].filter(Boolean).join(" · ")}</span></li>`).join("")}</ul>` : ""}
+      </li>`).join("")}</ol>
+    </details>`;
+}
+
+// The steps a comparison goes through, shown live while it runs (job phases from the server).
+const LIVE_STEPS = {
+  quick: [["size", "Understanding your request"], ["design", "Writing a concrete test task"],
+          ["recommend", "Agent 1 predicts the best model"], ["run", "Testing models and reviewing answers"]],
+  blueprint: [["size", "Understanding your request"], ["design", "Mapping it onto standard enterprise processes"],
+              ["estimate", "Agent 1 chooses a model for every AI step"]],
+};
+function liveSteps(kind, phase, extra = "") {
+  const steps = LIVE_STEPS[kind] || LIVE_STEPS.quick;
+  const at = Math.max(0, steps.findIndex(([id]) => id === phase));
+  return `<ol class="live-steps">${steps.map(([id, label], i) => `<li class="${i < at ? "done" : i === at ? "now" : ""}">
+      ${i < at ? "✓" : i === at ? `<span class="spinner"></span>` : "○"} ${esc(label)}${i === at && extra ? ` <span class="hint">${esc(extra)}</span>` : ""}</li>`).join("")}</ol>`;
+}
+
 // ---------- routing ----------
 
 async function route() {

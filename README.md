@@ -52,6 +52,18 @@ Results are in the app under **Where models run**, with every quote and its sour
 requests to companies they don't name (OpenRouter) make a model's location unverified, which Strict treats as
 outside.
 
+## Under the hood, shown to the user
+
+Every result and plan has **How we got this answer** (`taskcost/trace.py`), built from what the run recorded:
+- how the request was read (task, workflow or project; use case; industry; how sure);
+- any tailoring, and the sovereignty choice (helpers, reviewers, skipped models);
+- the test written, Agent 1's prediction and why;
+- every model tested, the reviewers (including when the last one was skipped), and the rule behind the
+  recommendation.
+
+Each step shows the model that ran it and where that model runs, its time and its cost. The header counts how
+many models your task reached in your country. While a comparison runs, the page shows the same steps live.
+
 ## Building vs running
 
 Every AI step in a plan has a phase:

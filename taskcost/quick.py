@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -42,6 +43,7 @@ async def quick_compare(
     cache: Cache | None = None,
     use_case_guess: dict[str, float] | None = None,
     personalization: dict[str, Any] | None = None,
+    size: dict[str, Any] | None = None,
 ) -> Path:
     """Run the whole quick flow and return the results folder.
 
@@ -89,7 +91,11 @@ async def quick_compare(
     task = plan.simple_tasks()[0]
     print(f"Task: {task.title}", file=log)
 
+    if progress:
+        progress("recommend")
+    recommend_started = time.monotonic()
     recommendation, registry = await _recommend(config, plan, catalog, backend, use_case, cache, log)
+    recommend_seconds = time.monotonic() - recommend_started
     picked = (recommendation or {}).get("model")
     if picked and picked not in seen and config.model_spec(picked).id in catalog and accepted(config, picked):
         # Always test Agent 1's own pick, so its prediction can be confirmed or refuted.
@@ -98,6 +104,7 @@ async def quick_compare(
 
     if progress:
         progress("run")
+    run_started = time.monotonic()
     run_config = replace(
         config,
         models=tuple(config.model_spec(model) for model in seen),
@@ -117,8 +124,14 @@ async def quick_compare(
             "registry": registry,
             "skipped_tiers": skipped,
             "residency": {m: model_fit(m, config.country) for m in seen},
+            "size": size,
+            "timeline": {"recommend_s": round(recommend_seconds, 2)},
         },
     )
+    timeline_file = run_dir / "config.json"
+    saved = json.loads(timeline_file.read_text(encoding="utf-8"))
+    saved["timeline"]["run_s"] = round(time.monotonic() - run_started, 2)
+    timeline_file.write_text(json.dumps(saved, indent=2), encoding="utf-8")
     finalize_run(run_dir)
     return run_dir
 
@@ -231,8 +244,11 @@ def quick_summary(run_dir: Path) -> dict[str, Any]:
         else:
             advice["verdict"] = "failed"
 
+    from .trace import quick_trace
+
     return {
         "name": run_dir.name,
+        "trace": quick_trace(config, tiers, records, recommended),
         "use_case": use_case,
         "use_case_label": USE_CASES.get(use_case, USE_CASES["batch"])["label"],
         "use_case_guess": config.get("use_case_guess"),

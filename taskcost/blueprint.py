@@ -105,6 +105,7 @@ async def size_request(backend: Backend, jev: ModelInfo, request: str) -> dict[s
         "is_simple": choice == "simple" and probabilities.get("simple", 0.0) >= 0.6,
         "use_case": use_case if use_case in USE_CASES else DEFAULT_USE_CASE,
         "use_case_probabilities": {k: float(v) for k, v in (use.get("probabilities") or {}).items()},
+        "model": jev.id, "cost_egp": round(decision.cost(jev), 6), "seconds": round(decision.latency_s, 2),
         "domain": str((decision.answers.get("domain") or {}).get("choice") or "general"),
         "domain_scores": {k: round(float(v), 3) for k, v in ((decision.answers.get("domain") or {}).get("probabilities") or {}).items()
                           if float(v) >= 0.05},
@@ -185,7 +186,7 @@ async def design_blueprint(
     reply = await chat_json(backend, designer, messages, lambda text: _clean(extract_json(text)), max_tokens=12000,
                             fail=lambda problem: ValueError(f"Could not design a blueprint: {problem}"))
     blueprint = reply.value
-    blueprint["design"] = {"model": designer.id, "cost_egp": round(reply.cost_egp, 6),
+    blueprint["design"] = {"model": designer.id, "cost_egp": round(reply.cost_egp, 6), "seconds": round(reply.latency_s, 2),
                            "created_at": datetime.now(timezone.utc).isoformat()}
     blueprint["request"] = request
     return blueprint

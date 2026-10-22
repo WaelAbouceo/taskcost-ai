@@ -131,6 +131,7 @@ async function renderBlueprint(name) {
       </div>
 
       <p>${esc(b.summary)}</p>
+      ${renderTrace(b.trace)}
 
       <details class="options">
         <summary>What we assumed</summary>

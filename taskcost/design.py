@@ -184,6 +184,7 @@ async def design_simple_task(
         "cost_egp": round(reply.cost_egp, 6),
         "assumptions": str(data.get("assumptions") or ""),
         "recurring": data.get("recurring") is not False,
+        "seconds": round(reply.latency_s, 2),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     return plan

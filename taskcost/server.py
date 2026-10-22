@@ -38,6 +38,7 @@ from .licenses import is_egypt_hosted, is_open_weights
 from .naming import slug
 from .plan import Plan, read_document
 from .quick import quick_compare, quick_summary
+from .trace import blueprint_trace
 from .hosting import load_snapshot, refresh_hosting, snapshot_age_hours
 from .registry import USE_CASES, registry_from_results
 from .reviewer import latest_review, list_reviews, review_age_hours, review_usage
@@ -456,7 +457,7 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
                          "tailored": bool(personalization)}
         if size["is_simple"]:
             result = launch_quick(cfg, task, chosen, trials, use_case, documents, False, "", guess,
-                                  personalization=personalization, client=client)
+                                  personalization=personalization, client=client, size=size)
             log_event("request", flow="simple", cached=result.get("status") == "cached", **request_facts)
             return {"kind": "simple", "size": size, **result}
 
@@ -520,7 +521,10 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
                 "sovereignty": {**policy, "country_name": country_name(policy["country"]),
                                 "level_label": LEVELS.get(policy["level"], policy["level"])},
                 "helpers": mode and {"label": mode.label, "models": sorted(set(mode.models.values())),
-                                     "local": all(model_fit(m, policy["country"])["rank"] <= 1 for m in mode.models.values())}}
+                                     "local": all(model_fit(m, policy["country"])["rank"] <= 1 for m in mode.models.values())},
+                "trace": blueprint_trace(blueprint, mode and {k: v for k, v in mode.models.items()
+                                                             if k in ("blueprint_model", "profiler_model")},
+                                         list(config().judge_models))}
 
     @app.post("/api/blueprints/{name}/verify")
     async def verify(name: str, steps: str = "", helpers: str = "") -> dict[str, Any]:
@@ -619,7 +623,7 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
 
     def launch_quick(cfg, task: str, chosen, trials: int, use_case: str, documents, force: bool, rerun_of: str,
                      use_case_guess: dict[str, float] | None = None, personalization: dict[str, Any] | None = None,
-                     client: str = "") -> dict[str, Any]:
+                     client: str = "", size: dict[str, Any] | None = None) -> dict[str, Any]:
         cache_parts = {
             "context": (personalization or {}).get("context", ""),
             "task": " ".join(task.split()).lower(),
@@ -646,7 +650,7 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
                     cfg, task.strip(), chosen, backend, plans_dir,
                     documents=documents, trials=trials, log=job, progress=progress,
                     use_case=use_case, plan=earlier_plan, cache=cache, use_case_guess=use_case_guess,
-                    personalization=personalization,
+                    personalization=personalization, size=size,
                 )
             cache.put("comparison", cache_parts, run_dir.name)
             log_event("comparison_done", client=client,

@@ -248,6 +248,7 @@ function renderHistory(runs) {
 
 async function startComparison(data, modelCount, button, box, endpoint = "/api/start") {
   button.disabled = true;
+  box.innerHTML = liveSteps("quick", endpoint === "/api/start" ? "size" : "design");
   try {
     const job = await api(endpoint, { method: "POST", body: data });
     const target = job.kind === "blueprint" ? "#/blueprint/" : "#/compare/";
@@ -259,11 +260,9 @@ async function startComparison(data, modelCount, button, box, endpoint = "/api/s
       ? `<p class="hint">This looks like a ${esc(job.size?.level === "workflow" ? "workflow" : "project")}, not a single task, so we're mapping how it usually runs in an enterprise.</p>` : "";
     followJob(job, {
       render: (state) => {
-        const step = {
-          run: `Testing ${modelCount} models${state.total ? ` (${state.done} of ${state.total} checked)` : ""}…`,
-          estimate: "Choosing a model for each AI step and estimating the monthly cost…",
-        }[state.phase] || (job.kind === "blueprint" ? "Mapping it to standard enterprise processes…" : "Understanding your task…");
-        box.innerHTML = `${intro}<p class="working"><span class="spinner"></span>${esc(step)} <span class="hint">${state.elapsed_s ?? 0}s</span></p>`;
+        const kind = job.kind === "blueprint" ? "blueprint" : "quick";
+        const extra = state.phase === "run" && state.total ? `${state.done} of ${state.total} answers checked` : `${state.elapsed_s ?? 0}s`;
+        box.innerHTML = `${intro}${liveSteps(kind, state.phase || "design", extra)}`;
       },
       onDone: (state) => { location.hash = target + state.result; },
       onError: (state) => {
@@ -349,6 +348,8 @@ async function renderAnswer(name) {
         }).join("")}
       </table>
       <p class="hint">Tap a model to read its answer and what the reviewers checked.</p>
+
+      ${renderTrace(q.trace)}
 
       <details class="options">
         <summary>How we tested</summary>

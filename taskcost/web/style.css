@@ -302,3 +302,22 @@ table.blueprint input.volume { width: 92px; text-align: right; padding: 6px 8px;
   .simple h1 { font-size: 30px; }
   .tiers { grid-template-columns: 1fr; }
 }
+
+/* under the hood */
+details.trace { margin: 18px 0; }
+details.trace summary .hint { margin-left: 8px; font-weight: 400; }
+ol.trace-steps { margin: 12px 0 4px; padding-left: 22px; }
+ol.trace-steps > li { margin: 0 0 14px; padding-left: 4px; }
+ol.trace-steps > li::marker { color: var(--accent); font-weight: 700; }
+.trace-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.trace-head .hint { margin-left: auto; }
+.trace-model { margin: 4px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+ol.trace-steps p { margin: 4px 0; color: var(--mist); font-size: 14px; }
+code { font: 12.5px var(--font-mono); color: var(--cloud, #ededed); background: rgba(255, 255, 255, 0.05);
+  padding: 2px 6px; border-radius: 6px; }
+ul.trace-items { list-style: none; padding: 0; margin: 6px 0 0; }
+ul.trace-items li { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 4px 0; }
+ol.live-steps { list-style: none; padding: 0; margin: 16px 2px 0; }
+ol.live-steps li { margin: 8px 0; color: var(--muted); display: flex; gap: 10px; align-items: center; }
+ol.live-steps li.done { color: var(--good); }
+ol.live-steps li.now { color: var(--text); font-weight: 600; }
