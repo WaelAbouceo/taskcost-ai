@@ -205,8 +205,8 @@ function tailoredNote(q) {
 }
 
 // The recommended model's cost per month at the user's usual volume, when it's known.
-function atYourScale(best, profile) {
-  if (!profile.monthly_volume || best.cost_per_1000_egp == null) return "";
+function atYourScale(best, profile, q = {}) {
+  if (!profile.monthly_volume || best.cost_per_1000_egp == null || q.recurring === false) return "";
   const monthly = (best.cost_per_1000_egp / 1000) * profile.monthly_volume;
   return `<div class="hint">At your usual ${profile.monthly_volume.toLocaleString()} tasks a month: about
     <strong>${money(monthly)} EGP a month</strong>.</div>`;
@@ -316,7 +316,9 @@ async function renderAnswer(name) {
           <div class="label">Use</div>
           <div class="pick">${esc(best.model)} <span class="badge">${esc(best.tier)}</span> ${sourceBadge(best.open_weights)}
             ${fitBadge(q, best)}</div>
-          <div class="facts"><strong>${money(best.cost_per_1000_egp)} EGP</strong> per 1,000 tasks ·
+          <div class="facts">${q.recurring === false
+            ? `About <strong>${money(best.cost_per_success_egp)} EGP</strong> for this one-off task ·`
+            : `<strong>${money(best.cost_per_1000_egp)} EGP</strong> per 1,000 tasks ·`}
             about ${best.latency_s == null ? "?" : best.latency_s.toFixed(1)} s per answer · passed every check</div>
           ${q.savings_ratio && q.savings_ratio >= 1.5
             ? `<div class="hint">${esc(q.most_expensive.tier)} would cost ${Math.round(q.savings_ratio)}× more for the same result.</div>` : ""}
@@ -327,7 +329,7 @@ async function renderAnswer(name) {
           ${q.cheapest_correct && q.cheapest_correct.cost_per_1000_egp < best.cost_per_1000_egp
             ? `<div class="hint">Cheapest correct option: ${esc(q.cheapest_correct.model)} (${q.cheapest_correct.open_weights ? "open source" : "proprietary"}${q.cheapest_correct.residency && q.cheapest_correct.residency.fit !== "in_country" ? `, ${esc(FIT_TEXT[q.cheapest_correct.residency.fit][1].toLowerCase())}` : ""})
                at ${money(q.cheapest_correct.cost_per_1000_egp)} EGP per 1,000 tasks.</div>` : ""}
-          ${atYourScale(best, profile)}
+          ${atYourScale(best, profile, q)}
           ${whyNotChosen(q, best)}
           ${q.advice?.verdict === "best" ? `<div class="hint">✓ Agent 1 predicted this before testing.</div>` : ""}
         </div>`
@@ -337,13 +339,13 @@ async function renderAnswer(name) {
         </div>`}
 
       <table class="models">
-        <tr><th>Model</th><th>Result</th><th class="num">EGP per 1,000 tasks</th></tr>
+        <tr><th>Model</th><th>Result</th><th class="num">${q.recurring === false ? "EGP for this task" : "EGP per 1,000 tasks"}</th></tr>
         ${q.tiers.map((t, i) => {
           const [cls, label, why] = modelStatus(t);
           return `<tr data-answer="${i}" class="${best === t ? "best" : ""}">
             <td><strong>${esc(t.tier)}</strong> ${sourceBadge(t.open_weights)} ${fitBadge(q, t)}<div class="hint">${esc(t.model)}</div></td>
             <td><span class="badge ${cls}">${esc(label)}</span>${why ? `<div class="hint">${esc(why)}</div>` : ""}</td>
-            <td class="num">${money(t.cost_per_1000_egp)}</td></tr>`;
+            <td class="num">${money(q.recurring === false ? t.cost_per_success_egp : t.cost_per_1000_egp)}</td></tr>`;
         }).join("")}
       </table>
       <p class="hint">Tap a model to read its answer and what the reviewers checked.</p>

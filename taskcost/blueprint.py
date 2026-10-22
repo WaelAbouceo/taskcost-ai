@@ -33,7 +33,7 @@ from .runner import FatalRunError, first_error, load_attempts, run_job
 from .tasks import Task
 
 KNOWLEDGE_FILE = Path(__file__).resolve().parent.parent / "knowledge" / "enterprise_processes.yaml"
-MAX_WORKFLOWS = 5
+MAX_WORKFLOWS = 6  # five running workflows plus, for build requests, one setup workflow
 MAX_AI_STEPS = 4
 
 SIZE_QUESTION = {
@@ -145,17 +145,30 @@ Rules
    Mark a step "ai" only where AI genuinely helps today: reading documents, classifying, matching, drafting,
    summarising, answering questions or translating. At most {MAX_AI_STEPS} AI steps per workflow.
 5. For each AI step give: task_type (one of {", ".join(TASK_TYPES)}), use_case ("chat" if a person waits for
-   the answer, "realtime" if an application waits, "batch" if it can run in the background),
-   monthly_volume (a number), instruction (one sentence, as it would be given to the AI model) and
+   the answer, "realtime" if an application waits, "batch" if it can run in the background), phase,
+   the volume for that phase, instruction (one sentence, as it would be given to the AI model) and
    2 to 4 criteria that a reviewer could check.
+6. phase is "run" for work that recurs while the system is in use (give monthly_volume), or "build" for work
+   done once to create, set up or migrate something (give total_volume: the whole amount, such as every
+   historical invoice to migrate or every help article to prepare).
+7. If the request builds, replaces, migrates or launches a system, make the first workflow "Setup and
+   migration" with the one-time work that usually comes with it: migrating and cleaning legacy records,
+   preparing the knowledge base from existing documents, writing templates, test sets or one-off
+   translations. Its AI steps are build steps. State in the assumptions how many years of history and how
+   many documents you assume.
+8. If the request is one-off work (a book, a game, a film, a campaign), its deliverables are build steps
+   (chapters, scenes, assets, listings) with total_volume. Use run steps only for work that genuinely recurs
+   after it is finished, such as answering readers' or players' messages.
 
 Reply with JSON only:
 {{"level": "workflow or project", "title": "short title", "summary": "two sentences",
   "assumptions": [{{"topic": "Company", "assumption": "..."}}],
   "workflows": [{{"id": "W1", "name": "...", "description": "one sentence",
     "steps": [{{"name": "...", "actor": "person"}},
-              {{"name": "...", "actor": "ai", "task_type": "extraction", "use_case": "batch",
-                "monthly_volume": 1200, "instruction": "...", "criteria": ["..."]}}]}}]}}
+              {{"name": "...", "actor": "ai", "task_type": "extraction", "use_case": "batch", "phase": "run",
+                "monthly_volume": 1200, "instruction": "...", "criteria": ["..."]}},
+              {{"name": "...", "actor": "ai", "task_type": "extraction", "use_case": "batch", "phase": "build",
+                "total_volume": 60000, "instruction": "...", "criteria": ["..."]}}]}}]}}
 """
 
 
@@ -195,10 +208,14 @@ def _clean(data: Any) -> dict[str, Any]:
                 else:
                     use_case = str(step.get("use_case", "batch"))
                     task_type = str(step.get("task_type", "other"))
+                    build = str(step.get("phase", "run")).lower() == "build"
+                    volume = lambda key: max(0, int(float(step.get(key) or 0)))
                     entry.update({
                         "task_type": task_type if task_type in TASK_TYPES else "other",
                         "use_case": use_case if use_case in USE_CASES else "batch",
-                        "monthly_volume": max(0, int(float(step.get("monthly_volume") or 0))),
+                        "phase": "build" if build else "run",
+                        "monthly_volume": 0 if build else volume("monthly_volume"),
+                        **({"total_volume": volume("total_volume") or volume("monthly_volume")} if build else {}),
                         "instruction": str(step.get("instruction", "")).strip(),
                         "criteria": [str(c) for c in step.get("criteria", [])][:4],
                     })
@@ -524,28 +541,48 @@ def cost_per_correct(card: dict[str, Any]) -> float:
     return card["cost_per_answer_egp"] / max(card["pass_rate"], 0.5)
 
 
+def is_build(step: dict[str, Any]) -> bool:
+    return step.get("phase") == "build"
+
+
+def step_volume(step: dict[str, Any]) -> int:
+    """How many answers the step needs: in total for a build step, per month for a run step."""
+    return step.get("total_volume", 0) if is_build(step) else step.get("monthly_volume", 0)
+
+
 def recompute_totals(blueprint: dict[str, Any]) -> dict[str, Any]:
-    """Recalculate every monthly cost from per-answer costs and the current volumes."""
+    """Recalculate every cost from per-answer costs and the current volumes: build steps cost once
+    (one_time_cost_egp), run steps every month (monthly_cost_egp), and the first year adds both."""
     registry = blueprint.get("estimate", {}).get("registry", {})
     strongest = registry.get(blueprint.get("strongest_model") or "")
     strongest_per = cost_per_correct(strongest) if strongest else 0.0
+    cost_key = lambda step: "one_time_cost_egp" if is_build(step) else "monthly_cost_egp"
     for workflow in blueprint["workflows"]:
         steps = [s for s in workflow["steps"] if s["actor"] == "ai"]
         for step in steps:
-            volume = step.get("monthly_volume", 0)
+            volume, key = step_volume(step), cost_key(step)
             if step.get("cost_per_answer_egp") is not None:
-                step["monthly_cost_egp"] = step["cost_per_answer_egp"] * volume
-            step["strongest_monthly_cost_egp"] = strongest_per * volume
+                step[key] = step["cost_per_answer_egp"] * volume
+            elif key not in step:
+                step[key] = None
+            if is_build(step):
+                step["monthly_cost_egp"] = 0.0
+            step[f"strongest_{key}"] = strongest_per * volume
             if step.get("measured"):
-                step["measured"]["monthly_cost_egp"] = step["measured"]["cost_per_answer_egp"] * volume
-        workflow["monthly_cost_egp"] = sum(s.get("monthly_cost_egp") or 0.0 for s in steps)
+                step["measured"][key] = step["measured"]["cost_per_answer_egp"] * volume
+        workflow["monthly_cost_egp"] = sum(s.get("monthly_cost_egp") or 0.0 for s in steps if not is_build(s))
+        workflow["one_time_cost_egp"] = sum(s.get("one_time_cost_egp") or 0.0 for s in steps if is_build(s))
     steps = ai_steps(blueprint)
+    run, build = [s for s in steps if not is_build(s)], [s for s in steps if is_build(s)]
     blueprint["monthly_cost_egp"] = sum(w["monthly_cost_egp"] for w in blueprint["workflows"])
-    blueprint["strongest_monthly_cost_egp"] = sum(s["strongest_monthly_cost_egp"] for s in steps)
+    blueprint["one_time_cost_egp"] = sum(w["one_time_cost_egp"] for w in blueprint["workflows"])
+    blueprint["first_year_cost_egp"] = blueprint["one_time_cost_egp"] + 12 * blueprint["monthly_cost_egp"]
+    blueprint["strongest_monthly_cost_egp"] = sum(s.get("strongest_monthly_cost_egp", 0.0) for s in run)
+    blueprint["strongest_one_time_cost_egp"] = sum(s.get("strongest_one_time_cost_egp", 0.0) for s in build)
     if blueprint.get("verification"):
-        blueprint["verification"]["monthly_cost_egp"] = sum(
-            s["measured"]["monthly_cost_egp"] if s.get("measured") else (s.get("monthly_cost_egp") or 0.0) for s in steps
-        )
+        chosen = lambda s, key: s["measured"][key] if s.get("measured") else (s.get(key) or 0.0)
+        blueprint["verification"]["monthly_cost_egp"] = sum(chosen(s, "monthly_cost_egp") for s in run)
+        blueprint["verification"]["one_time_cost_egp"] = sum(chosen(s, "one_time_cost_egp") for s in build)
     return blueprint
 
 

@@ -127,6 +127,10 @@ def compute_metrics(events: list[dict[str, Any]]) -> dict[str, Any]:
         m["blueprint.avg_ai_steps"] = round(statistics.mean(b["ai_steps"] for b in blueprints), 1)
         monthly = [b["monthly_cost_egp"] for b in blueprints if b.get("monthly_cost_egp") is not None]
         m["blueprint.median_monthly_cost_egp"] = round(statistics.median(monthly), 1) if monthly else None
+        m["blueprint.with_setup_share"] = _rate(sum(1 for b in blueprints if b.get("build_steps")), len(blueprints))
+        setup = [b["one_time_cost_egp"] for b in blueprints if b.get("build_steps")]
+        if setup:
+            m["blueprint.median_setup_cost_egp"] = round(statistics.median(setup), 1)
         m["blueprint.unpriced_step_rate"] = _rate(sum(b["unpriced_steps"] for b in blueprints),
                                                   sum(b["ai_steps"] for b in blueprints))
         m["blueprint.measured_share"] = _rate(len({e["run"] for e in by_kind.get("measured", [])}), len(blueprints))
@@ -154,7 +158,7 @@ METRIC_HELP = {
     "sovereignty.": "sovereignty levels and countries chosen, and Strict refusals (no model allowed where the user is)",
     "cost.": "EGP per comparison, and the share spent on helpers (understanding the task) and reviewers rather than the models tested",
     "time.": "seconds from pressing Compare to the result",
-    "blueprint.": "plans for workflows and systems: AI steps per plan, median monthly cost, share of steps with no model fast enough, share of plans measured on examples rather than estimated",
+    "blueprint.": "plans for workflows and systems: AI steps per plan, median monthly running cost, share of plans with one-time setup work (migration, knowledge base) and its median cost, share of steps with no model fast enough, share of plans measured on examples rather than estimated",
     "errors.": "jobs that failed with an error",
     "users.": "distinct anonymous users (browsers), and the share of their requests tailored to what was learned about them (industry, language, usual use case)",
 }

@@ -246,6 +246,7 @@ def quick_summary(run_dir: Path) -> dict[str, Any]:
         "criteria": [c if isinstance(c, str) else c.get("text", "") for c in task.criteria],
         "expected_answer": task.expected_answer,
         "assumptions": (config.get("design") or {}).get("assumptions", ""),
+        "recurring": (config.get("design") or {}).get("recurring", True),
         "documents": list(plan.documents),
         "trials": config.get("trials"),
         "test_mode": bool(config.get("test_mode")),

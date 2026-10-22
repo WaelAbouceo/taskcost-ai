@@ -79,6 +79,9 @@ async function renderBlueprint(name) {
   const strongest = registry[b.strongest_model];
   const strongestPer = strongest ? strongest.cost_per_answer_egp / Math.max(strongest.pass_rate, 0.5) : 0;
   const aiSteps = b.workflows.flatMap((w) => w.steps.filter((s) => s.actor === "ai"));
+  const isBuild = (s) => s.phase === "build";
+  const hasBuild = aiSteps.some(isBuild);
+  const stepVolume = (s) => (isBuild(s) ? s.total_volume : s.monthly_volume) || 0;
   const v = b.verification;
   const spent = v ? Object.values(v.cost_egp).reduce((a, c) => a + c, 0) : 0;
   const unresolved = v ? aiSteps.filter((s) => UNRESOLVED[s.verdict]) : [];
@@ -90,13 +93,18 @@ async function renderBlueprint(name) {
       <div class="answer ${v ? "good" : "estimate"}">
         <div class="label">This is a ${b.level === "workflow" ? "workflow" : "project"}, not a single task</div>
         <div class="pick">${esc(b.title)}</div>
-        <div class="facts">About <strong><span id="bp-total"></span> EGP per month</strong> for the AI work ·
+        <div class="facts">${hasBuild
+          ? `About <strong><span id="bp-setup"></span> EGP to set up</strong>, then <strong><span id="bp-total"></span> EGP per month</strong>
+             to run · first year about <span id="bp-year"></span> EGP`
+          : `About <strong><span id="bp-total"></span> EGP per month</strong> for the AI work`} ·
           ${aiSteps.length} AI steps in ${b.workflows.length} workflow${b.workflows.length === 1 ? "" : "s"}</div>
+        ${hasBuild ? `<div class="hint">Setup is one-time work (${aiSteps.filter(isBuild).length} steps, such as migrating old records or
+          preparing a knowledge base); running is the work that repeats every month.</div>` : ""}
         ${v ? `<div class="hint"><strong>Measured</strong> on a realistic example for ${v.measured_steps} of ${v.ai_steps} AI steps,
               cheapest model first. Measuring has cost ${egp(spent)} EGP so far.</div>`
             : `<div class="hint"><strong>Estimate only.</strong> Volumes are assumed and no step has been tested yet.
                 <button type="button" class="link" id="measure-top">Measure it for real (about ${Math.round(aiSteps.length * 0.5)} EGP) →</button></div>`}
-        <div class="hint">Using ${esc(b.strongest_model)} for every AI step would cost about <span id="bp-strongest"></span> EGP per month.</div>
+        <div class="hint">Using ${esc(b.strongest_model)} for every AI step would cost about <span id="bp-strongest"></span>.</div>
       </div>
 
       ${v ? "" : `<div class="card measure">
@@ -134,17 +142,18 @@ async function renderBlueprint(name) {
         <h2>${esc(w.name)}</h2>
         <p class="hint">${esc(w.description)}</p>
         <div class="table-wrap"><table class="models blueprint">
-          <tr><th>Step</th><th>Who</th><th>Model</th><th class="num">Per month</th><th class="num">EGP / month</th></tr>
+          <tr><th>Step</th><th>Who</th><th>Model</th><th class="num">How many</th><th class="num">EGP</th></tr>
           ${w.steps.map((s) => {
             const [cls, who] = WHO[s.actor] || WHO.person;
             if (s.actor !== "ai") {
               return `<tr class="manual"><td>${esc(s.name)}</td><td><span class="badge ${cls}">${who}</span></td><td></td><td></td><td></td></tr>`;
             }
             return `<tr class="clickable" data-step-row="${esc(s.id)}">
-              <td>${esc(s.name)}<div class="hint">${esc((USE_CASES_SHORT[s.use_case] || [s.use_case])[0])} · ${esc(s.task_type)}</div></td>
+              <td>${esc(s.name)}<div class="hint">${isBuild(s) ? "Setup, once" : "Running"} · ${esc((USE_CASES_SHORT[s.use_case] || [s.use_case])[0])} · ${esc(s.task_type)}</div></td>
               <td><span class="badge ${cls}">${who}</span></td>
               <td>${modelCell(s)}</td>
-              <td class="num"><input type="number" min="0" class="volume" data-step="${esc(s.id)}" value="${s.monthly_volume}"></td>
+              <td class="num"><input type="number" min="0" class="volume" data-step="${esc(s.id)}" value="${stepVolume(s)}">
+                <div class="hint">${isBuild(s) ? "in total" : "a month"}</div></td>
               <td class="num" data-cost="${esc(s.id)}"></td></tr>`;
           }).join("")}
         </table></div>`).join("")}
@@ -165,24 +174,40 @@ async function renderBlueprint(name) {
 
   const volumeOf = (s) => Number(app.querySelector(`input[data-step="${s.id}"]`).value) || 0;
   const update = () => {
-    const costs = aiSteps.map((s) => ({ step: s, cost: perAnswer(s) == null ? null : perAnswer(s) * volumeOf(s) }));
-    costs.forEach(({ step, cost }) => { app.querySelector(`[data-cost="${step.id}"]`).textContent = perMonth(cost); });
-    const total = costs.reduce((sum, c) => sum + (c.cost || 0), 0);
-    document.getElementById("bp-total").textContent = perMonth(total);
-    document.getElementById("bp-strongest").textContent = perMonth(aiSteps.reduce((sum, s) => sum + strongestPer * volumeOf(s), 0));
+    // A step's cost: once for setup steps, per month for running steps. "Year" puts both on one scale.
+    const costs = aiSteps.map((s) => {
+      const cost = perAnswer(s) == null ? null : perAnswer(s) * volumeOf(s);
+      return { step: s, cost, year: cost == null ? null : isBuild(s) ? cost : cost * 12 };
+    });
+    costs.forEach(({ step, cost }) => {
+      app.querySelector(`[data-cost="${step.id}"]`).textContent = cost == null ? "—" : `${perMonth(cost)} ${isBuild(step) ? "once" : "/ month"}`;
+    });
+    const monthly = costs.filter((c) => !isBuild(c.step)).reduce((sum, c) => sum + (c.cost || 0), 0);
+    const setup = costs.filter((c) => isBuild(c.step)).reduce((sum, c) => sum + (c.cost || 0), 0);
+    document.getElementById("bp-total").textContent = perMonth(monthly);
+    if (hasBuild) {
+      document.getElementById("bp-setup").textContent = perMonth(setup);
+      document.getElementById("bp-year").textContent = perMonth(setup + 12 * monthly);
+    }
+    const strongMonthly = aiSteps.filter((s) => !isBuild(s)).reduce((sum, s) => sum + strongestPer * volumeOf(s), 0);
+    const strongSetup = aiSteps.filter(isBuild).reduce((sum, s) => sum + strongestPer * volumeOf(s), 0);
+    document.getElementById("bp-strongest").textContent = hasBuild
+      ? `${perMonth(strongSetup)} EGP to set up and ${perMonth(strongMonthly)} EGP per month` : `${perMonth(strongMonthly)} EGP per month`;
 
-    const top = costs.filter((c) => c.cost).sort((a, c) => c.cost - a.cost).slice(0, 3);
-    document.getElementById("bp-breakdown").innerHTML = top.map(({ step, cost }) => `
+    const total = costs.reduce((sum, c) => sum + (c.year || 0), 0);
+    const top = costs.filter((c) => c.year).sort((a, c) => c.year - a.year).slice(0, 3);
+    document.getElementById("bp-breakdown").innerHTML = top.map(({ step, cost, year }) => `
       <div class="bar-row"><span>${esc(step.name)}</span>
-        <div class="bar-track"><div class="bar-fill" style="width:${total ? Math.max((cost / total) * 100, 1) : 0}%"></div></div>
-        <span class="num">${perMonth(cost)} EGP</span></div>`).join("");
-    const chatShare = total ? costs.filter((c) => c.step.use_case === "chat").reduce((sum, c) => sum + (c.cost || 0), 0) / total : 0;
-    const topShare = total && top[0] ? top[0].cost / total : 0;
+        <div class="bar-track"><div class="bar-fill" style="width:${total ? Math.max((year / total) * 100, 1) : 0}%"></div></div>
+        <span class="num">${perMonth(cost)} EGP ${isBuild(step) ? "once" : "/ mo"}</span></div>`).join("")
+      + (hasBuild ? `<p class="hint">Ranked by first-year cost: setup once plus 12 months of running.</p>` : "");
+    const chatShare = total ? costs.filter((c) => c.step.use_case === "chat").reduce((sum, c) => sum + (c.year || 0), 0) / total : 0;
+    const topShare = total && top[0] ? top[0].year / total : 0;
     document.getElementById("bp-insight").textContent = chatShare >= 0.5
       ? `Chatbot steps make up ${Math.round(chatShare * 100)}% of the cost: a person is waiting, so they need a fast model, and the cheapest model is too slow for them.`
       : topShare >= 0.5
         ? `"${top[0].step.name}" alone is ${Math.round(topShare * 100)}% of the cost, so its volume and model matter most.`
-        : `The top ${top.length} steps make up ${total ? Math.round((top.reduce((sum, c) => sum + c.cost, 0) / total) * 100) : 0}% of the cost.`;
+        : `The top ${top.length} steps make up ${total ? Math.round((top.reduce((sum, c) => sum + c.year, 0) / total) * 100) : 0}% of the cost.`;
   };
   update();
 

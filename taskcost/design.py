@@ -57,11 +57,13 @@ Rules
 5. Reviewers cannot count words precisely. If length matters, ask for an approximate length in the instruction and make it a separate, optional criterion: {{"text": "Is roughly 120 to 180 words", "required": false}}.
 6. Give expected_answer only when the answer is determined (extraction, calculation, classification); otherwise null.
 7. task_type is one of: {", ".join(TASK_TYPES)}.
+8. recurring is true when this kind of task is done again and again (emails, tickets, invoices), false when it is
+   one-off work done once (writing a book chapter, translating a whole catalogue, a launch announcement).
 
 Reply with JSON only:
 {{"title": "short title, e.g. Delayed-order email", "task_type": "generation",
   "instruction": "...", "criteria": ["...", {{"text": "...", "required": false}}], "expected_answer": null,
-  "assumptions": "one sentence on what you made concrete, or empty"}}
+  "recurring": true, "assumptions": "one sentence on what you made concrete, or empty"}}
 """
 
 
@@ -181,6 +183,7 @@ async def design_simple_task(
         "model": model.id,
         "cost_egp": round(reply.cost_egp, 6),
         "assumptions": str(data.get("assumptions") or ""),
+        "recurring": data.get("recurring") is not False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     return plan

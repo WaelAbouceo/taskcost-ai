@@ -52,6 +52,23 @@ Results are in the app under **Where models run**, with every quote and its sour
 requests to companies they don't name (OpenRouter) make a model's location unverified, which Strict treats as
 outside.
 
+## Building vs running
+
+Every AI step in a plan has a phase:
+- **run**: recurring work while the system is in use, with a `monthly_volume`.
+- **build**: one-time work, with a `total_volume`.
+
+When a request builds, replaces, migrates or launches a system, the plan starts with a **Setup and migration**
+workflow: migrating legacy records, preparing a knowledge base from existing documents, templates, test sets,
+one-off translations. In one-off projects (a book, a game, a campaign) the deliverables are build steps.
+
+Plans show setup cost once, running cost per month and the first-year total (setup + 12 months);
+`recompute_totals` in `taskcost/blueprint.py`. Single tasks flagged as one-off by the task writer show a cost
+for the task instead of per 1,000 tasks.
+
+Estimates use each model's average cost per answer on the task library, so long outputs (a 4,000-word chapter)
+are underestimated until measured. Embeddings for knowledge-base search are not priced yet.
+
 ## Model variants and chatbot speed
 
 `model_variants` in `benchmark.yaml` defines the same model with other settings, named `model-id@name`, for

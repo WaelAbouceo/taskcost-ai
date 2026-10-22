@@ -83,6 +83,8 @@ def blueprint_event(blueprint: dict[str, Any], name: str, seconds: float | None 
         "workflows": len(blueprint.get("workflows", [])), "ai_steps": len(steps),
         "use_cases": [s.get("use_case") for s in steps], "models": [s.get("model") for s in steps],
         "monthly_cost_egp": blueprint.get("monthly_cost_egp"), "unpriced_steps": len(blueprint.get("unpriced_steps") or []),
+        "one_time_cost_egp": blueprint.get("one_time_cost_egp") or 0.0,
+        "build_steps": sum(1 for s in steps if s.get("phase") == "build"),
         "country": policy.get("country"), "sovereignty": policy.get("level"), "helper_mode": blueprint.get("helper_mode"),
         "design_cost_egp": (blueprint.get("design") or {}).get("cost_egp") or 0.0,
         "agent1_cost_egp": (blueprint.get("estimate") or {}).get("profiler_cost_egp") or 0.0,

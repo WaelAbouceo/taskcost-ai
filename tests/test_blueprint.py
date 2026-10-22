@@ -206,3 +206,28 @@ def test_estimate_prices_every_ai_step_by_volume():
     assert estimated["monthly_cost_egp"] == pytest.approx(1200 * 0.005 + 300 * 0.05 + 250 * 0.005)
     assert estimated["strongest_model"] == "big"
     assert estimated["strongest_monthly_cost_egp"] == pytest.approx((1200 + 300 + 250) * 3.0)
+
+
+def test_build_steps_cost_once_and_run_steps_every_month():
+    from taskcost.blueprint import _clean, recompute_totals
+
+    data = {"level": "project", "workflows": [
+        {"name": "Setup and migration", "steps": [
+            {"name": "Legacy invoices migrated", "actor": "ai", "task_type": "extraction", "use_case": "batch",
+             "phase": "build", "total_volume": 60000, "instruction": "Extract the fields.", "criteria": ["a"]}]},
+        {"name": "Run", "steps": [
+            {"name": "New invoice read", "actor": "ai", "task_type": "extraction", "use_case": "batch",
+             "monthly_volume": 1200, "instruction": "Extract the fields.", "criteria": ["a"]}]},
+    ]}
+    blueprint = _clean(data)
+    build, run = blueprint["workflows"][0]["steps"][0], blueprint["workflows"][1]["steps"][0]
+    assert (build["phase"], build["total_volume"], build["monthly_volume"]) == ("build", 60000, 0)
+    assert (run["phase"], run["monthly_volume"]) == ("run", 1200) and "total_volume" not in run
+    for step in (build, run):
+        step["cost_per_answer_egp"] = 0.01
+    blueprint["estimate"] = {"registry": {"big": {"cost_per_answer_egp": 0.1, "pass_rate": 1.0}}}
+    blueprint["strongest_model"] = "big"
+    totals = recompute_totals(blueprint)
+    assert totals["one_time_cost_egp"] == pytest.approx(600) and totals["monthly_cost_egp"] == pytest.approx(12)
+    assert totals["first_year_cost_egp"] == pytest.approx(600 + 12 * 12)
+    assert totals["strongest_one_time_cost_egp"] == pytest.approx(6000) and build["monthly_cost_egp"] == 0.0

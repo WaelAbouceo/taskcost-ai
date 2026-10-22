@@ -564,7 +564,7 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
         blueprint = load_blueprint(folder)
         for step in ai_steps(blueprint):
             if step["id"] in volumes:
-                step["monthly_volume"] = max(0, int(volumes[step["id"]]))
+                step["total_volume" if step.get("phase") == "build" else "monthly_volume"] = max(0, int(volumes[step["id"]]))
         log_event("volumes_saved", client=valid_client(client), run=name, volumes=[max(0, int(v)) for v in volumes.values()])
         write_blueprint(folder, recompute_totals(blueprint))
         return {"name": name, **blueprint}
