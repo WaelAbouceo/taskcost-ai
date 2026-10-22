@@ -52,6 +52,17 @@ Results are in the app under **Where models run**, with every quote and its sour
 requests to companies they don't name (OpenRouter) make a model's location unverified, which Strict treats as
 outside.
 
+## Model variants and chatbot speed
+
+`model_variants` in `benchmark.yaml` defines the same model with other settings, named `model-id@name`, for
+example `SovereignEG/Qwen3.8-27B-FP8@instant` (no reasoning). A variant is measured, ranked and recommended like
+any model, and has its base model's licence and location. On the 10 enterprise tasks the `@instant` version of
+the Egypt-hosted Qwen passed 20 of 20 at about a third of the default's time and cost.
+
+Chatbot speed is judged on chatbot-length answers (up to `SHORT_ANSWER_TOKENS`, 600 tokens) once a model has
+at least `MIN_SHORT_RUNS` (8) of them measured. A long report is slow from any model, and a chatbot rarely
+writes one. Otherwise, and for other use cases, every answer counts (`taskcost/registry.py`).
+
 ## Insights: the log reviewer agent
 
 The server keeps a usage log (`.cache/usage/events-YYYY-MM.jsonl`, never committed): requests, finished

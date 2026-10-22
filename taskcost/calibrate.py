@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TextIO
 
-from .config import BenchmarkConfig, ModelSpec
+from .config import BenchmarkConfig
 from .judges import build_panel
 from .profiler import Profile, profile_task, tier_for_class
 from .runner import Backend, FatalRunError, first_error, load_attempts, new_run_dir, pricing_snapshot, run_job
@@ -39,7 +39,7 @@ async def calibrate(
         raise ValueError("Configure tiers in benchmark.yaml")
     catalog = await backend.list_models()
     needed = [profiler_model, *config.judge_models, *(model for _, model in tiers)]
-    missing = [m for m in needed if m not in catalog]
+    missing = [m for m in needed if config.model_spec(m).id not in catalog]
     if missing:
         raise ValueError(f"Models not in the catalog: {missing}")
     panel = build_panel(backend, [catalog[j] for j in config.judge_models])
@@ -58,11 +58,11 @@ async def calibrate(
     with (run_dir / "attempts.jsonl").open("w", encoding="utf-8") as sink:
 
         async def run_tier(tier: str, model: str, batch: list[Task]) -> None:
-            spec = ModelSpec(id=model, label=model, temperature=config.default_temperature)
+            spec = config.model_spec(model)
 
             async def one(task: Task, trial: int) -> bool:
                 async with semaphore:
-                    result = await run_job(run_config, backend, panel, spec, catalog[model], task, trial, sink, {"tier": tier})
+                    result = await run_job(run_config, backend, panel, spec, catalog[spec.id], task, trial, sink, {"tier": tier})
                 return result.passed
 
             outcomes = await asyncio.gather(*(one(t, n) for t in batch for n in range(1, trials + 1)))
@@ -93,7 +93,7 @@ async def calibrate(
         "trials": trials,
         "full": full,
         "started_at": datetime.now(timezone.utc).isoformat(),
-        "pricing_egp": pricing_snapshot([catalog[m] for m in dict.fromkeys(needed)]),
+        "pricing_egp": pricing_snapshot([catalog[config.model_spec(m).id] for m in dict.fromkeys(needed)]),
     })
     (run_dir / "calibration.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     (run_dir / "report.md").write_text(render_calibration(summary), encoding="utf-8")

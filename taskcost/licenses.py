@@ -77,11 +77,12 @@ def label_source(model_id: str) -> str:
 
 def is_egypt_hosted(model_id: str) -> bool:
     """True if SovereignEG serves the model from its own GPUs in Egypt ("Sovereign · Hosted in Egypt")."""
-    return model_id in _egypt_hosted()
+    return model_id.split("@", 1)[0] in _egypt_hosted()
 
 
 def is_open_weights(model_id: str) -> bool:
     """True if the model's weights are published; unknown models count as proprietary."""
+    model_id = model_id.split("@", 1)[0]
     label = _catalog_labels().get(model_id)
     if label:
         return label == "open_weights"

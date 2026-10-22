@@ -94,7 +94,8 @@ async function renderBlueprint(name) {
           ${aiSteps.length} AI steps in ${b.workflows.length} workflow${b.workflows.length === 1 ? "" : "s"}</div>
         ${v ? `<div class="hint"><strong>Measured</strong> on a realistic example for ${v.measured_steps} of ${v.ai_steps} AI steps,
               cheapest model first. Measuring has cost ${egp(spent)} EGP so far.</div>`
-            : `<div class="hint"><strong>Estimate only.</strong> Volumes are assumed and no step has been tested yet.</div>`}
+            : `<div class="hint"><strong>Estimate only.</strong> Volumes are assumed and no step has been tested yet.
+                <button type="button" class="link" id="measure-top">Measure it for real (about ${Math.round(aiSteps.length * 0.5)} EGP) →</button></div>`}
         <div class="hint">Using ${esc(b.strongest_model)} for every AI step would cost about <span id="bp-strongest"></span> EGP per month.</div>
       </div>
 
@@ -203,6 +204,10 @@ async function renderBlueprint(name) {
   const measure = document.getElementById("measure");
   if (measure) measure.addEventListener("click", () =>
     startMeasuring(name, null, measure, document.getElementById("measure-progress"), aiSteps.length, () => renderBlueprint(name)));
+  document.getElementById("measure-top")?.addEventListener("click", () => {
+    measure.scrollIntoView({ behavior: "smooth", block: "center" });
+    measure.click();
+  });
   const again = document.getElementById("remeasure-unresolved");
   if (again) again.addEventListener("click", () =>
     startMeasuring(name, unresolved.map((s) => s.id), again, document.getElementById("unresolved-progress"),

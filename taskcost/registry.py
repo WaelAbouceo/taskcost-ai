@@ -16,6 +16,11 @@ from typing import Any
 from .licenses import is_egypt_hosted, is_open_weights
 from .metrics import percentile
 
+# Chatbot speed is judged on chatbot-length answers: a long report is slow from any model, and a chatbot
+# rarely writes one. Used once a model has enough such answers measured; otherwise all answers count.
+SHORT_ANSWER_TOKENS = 600
+MIN_SHORT_RUNS = 8
+
 USE_CASES: dict[str, dict[str, Any]] = {
     "chat": {"label": "Chatbot: a person is waiting for the answer", "max_p90_s": 5.0},
     "realtime": {"label": "Real-time workflow: an application waits for the result", "max_p90_s": 15.0},
@@ -34,10 +39,18 @@ class ModelCard:
     cost_per_answer_egp: float
     open_weights: bool = False
     egypt_hosted: bool = False
+    latency_p90_short_s: float | None = None  # slowest 1 in 10 among answers of chatbot length
+    short_runs: int = 0
+
+    def speed_for(self, use_case: str) -> float:
+        """The slowest-1-in-10 latency that counts for this use case."""
+        if use_case == "chat" and self.short_runs >= MIN_SHORT_RUNS and self.latency_p90_short_s is not None:
+            return self.latency_p90_short_s
+        return self.latency_p90_s
 
     def fits(self, use_case: str) -> bool:
         limit = USE_CASES[use_case]["max_p90_s"]
-        return limit is None or self.latency_p90_s <= limit
+        return limit is None or self.speed_for(use_case) <= limit
 
     def describe(self) -> str:
         return (
@@ -69,6 +82,8 @@ def build_registry(records: list[dict[str, Any]]) -> dict[str, ModelCard]:
     cards = {}
     for model, runs in by_model.items():
         latencies = [r["latency_s"] for r in runs if r.get("latency_s") is not None]
+        short = [r["latency_s"] for r in runs if r.get("latency_s") is not None
+                 and (r.get("completion_tokens") or 0) <= SHORT_ANSWER_TOKENS]
         cards[model] = ModelCard(
             id=model,
             tier=str(runs[0].get("tier", "")),
@@ -79,6 +94,8 @@ def build_registry(records: list[dict[str, Any]]) -> dict[str, ModelCard]:
             cost_per_answer_egp=statistics.median(r["cost_egp"] for r in runs),
             open_weights=is_open_weights(model),
             egypt_hosted=is_egypt_hosted(model),
+            latency_p90_short_s=percentile(short, 90),
+            short_runs=len(short),
         )
     return dict(sorted(cards.items(), key=lambda item: item[1].cost_per_answer_egp))
 

@@ -78,6 +78,15 @@ class BenchmarkConfig:
     base_dir: Path = Path(".")
     helper_modes: tuple[HelperMode, ...] = ()
     helper_mode: str | None = None
+    # Same model, other settings (for example less reasoning, for speed): "model-id@name" -> {id, params...}.
+    model_variants: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def model_spec(self, name: str) -> ModelSpec:
+        """How to call a model name used in tiers and the registry: a catalog id, or a variant of one."""
+        variant = dict(self.model_variants.get(name) or {})
+        model_id = variant.pop("id", base_model(name))
+        return ModelSpec(id=model_id, label=name, temperature=variant.pop("temperature", self.default_temperature),
+                         extra=variant)
 
     def with_helper_mode(self, mode: str) -> BenchmarkConfig:
         chosen = next((m for m in self.helper_modes if m.id == mode), None)
@@ -172,6 +181,11 @@ def load_config(path: str | Path) -> BenchmarkConfig:
     )
     if config.trials < 1 or config.max_attempts < 1 or config.concurrency < 1:
         raise ValueError(f"{path}: trials, max_attempts and concurrency must be at least 1")
+    variants = data.get("model_variants") or {}
+    bad = [name for name in variants if "@" not in name]
+    if bad:
+        raise ValueError(f"{path}: model_variants names must look like model-id@name, got {bad}")
+    config = replace(config, model_variants={name: dict(v or {}) for name, v in variants.items()})
     modes = _helper_modes(data.get("helper_modes") or {}, path)
     if modes:
         config = replace(config, helper_modes=modes)
@@ -188,6 +202,11 @@ def _helper_modes(data: dict[str, Any], path: Path) -> tuple[HelperMode, ...]:
             raise ValueError(f"{path}: helper mode {mode_id!r} has unknown keys {sorted(unknown)}")
         modes.append(HelperMode(str(mode_id), str(entry.get("label", mode_id)), str(entry.get("description", "")), models))
     return tuple(modes)
+
+
+def base_model(name: str) -> str:
+    """The catalog id behind a model name: "model-id@variant" -> "model-id"."""
+    return name.split("@", 1)[0]
 
 
 def _judge_models(data: dict[str, Any]) -> tuple[str, ...]:

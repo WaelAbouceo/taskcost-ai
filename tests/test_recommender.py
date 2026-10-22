@@ -178,3 +178,29 @@ def test_registry_and_ground_truth():
     assert best_model("t1", "batch", cards, results) == "a"
     assert best_model("t1", "chat", cards, results) == "b"
     assert best_model("t2", "batch", cards, results) == "b"
+
+
+def test_chat_speed_is_judged_on_chatbot_length_answers_once_there_are_enough():
+    from taskcost.registry import MIN_SHORT_RUNS, SHORT_ANSWER_TOKENS
+
+    def runs(model, latency, tokens, n):
+        return [{**record(model, f"t{i}", True, 0.01, latency), "completion_tokens": tokens} for i in range(n)]
+
+    many = runs("fast-short", 2.0, 200, MIN_SHORT_RUNS) + runs("fast-short", 9.0, SHORT_ANSWER_TOKENS + 900, 4)
+    few = runs("few-short", 2.0, 200, MIN_SHORT_RUNS - 1) + runs("few-short", 9.0, 1500, 4)
+    cards = build_registry(many + few)
+    assert cards["fast-short"].fits("chat") and cards["fast-short"].speed_for("chat") == 2.0
+    assert cards["fast-short"].speed_for("realtime") == 9.0  # other use cases still count every answer
+    assert not cards["few-short"].fits("chat")  # too few short answers: all answers count
+
+
+def test_model_variants_call_the_base_model_with_their_settings():
+    from taskcost.config import BenchmarkConfig, base_model
+    from taskcost.licenses import is_open_weights
+
+    cfg = BenchmarkConfig(name="t", tasks="t", models=(), default_temperature=0.2,
+                          model_variants={"qwen-x@instant": {"id": "qwen-x", "reasoning_effort": "none"}})
+    spec = cfg.model_spec("qwen-x@instant")
+    assert (spec.id, spec.label, spec.extra, spec.temperature) == ("qwen-x", "qwen-x@instant", {"reasoning_effort": "none"}, 0.2)
+    assert cfg.model_spec("gpt-oss-20b").id == "gpt-oss-20b" and base_model("gpt-oss-20b@low") == "gpt-oss-20b"
+    assert is_open_weights("gpt-oss-20b@anything")

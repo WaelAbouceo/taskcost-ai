@@ -60,10 +60,20 @@ review_refresh_hours: 24
 # proprietary model is kept as the fallback and as a reference. Measured on the task library
 # (results/calibration-egypt*, calibration-open-*). Qwen/Qwen3-0.6B is also hosted in Egypt but passed 4/20.
 tiers:
-  Egypt-hosted: SovereignEG/Qwen3.8-27B-FP8  # open; hosted in Egypt; 19/20 on the library; too slow for a chatbot
+  Egypt-hosted: SovereignEG/Qwen3.8-27B-FP8@instant  # open; hosted in Egypt; no reasoning: 20/20 on the library, fast enough for a chatbot
   Fast: gpt-oss-20b                          # open, abroad; cheapest; too slow for a chatbot
   Strong: deepseek-v4-pro                    # open, abroad; 20/20 on the library
   Proprietary: gpt-5.4-mini                  # fallback when no open model is good or fast enough
+# Model variants: the same model with other settings, measured and recommended like any other model.
+# Qwen3.8 reasons at length by default; with less reasoning it answers short replies several times faster.
+model_variants:
+  SovereignEG/Qwen3.8-27B-FP8@fast:
+    id: SovereignEG/Qwen3.8-27B-FP8
+    reasoning_effort: low
+  SovereignEG/Qwen3.8-27B-FP8@instant:
+    id: SovereignEG/Qwen3.8-27B-FP8
+    reasoning_effort: none
+
 escalate_at: 0.5                        # step up from the cheapest model if Agent 1 thinks it more likely than not to fail
 
 cache:

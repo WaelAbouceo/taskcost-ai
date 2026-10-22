@@ -51,7 +51,8 @@ class Assessment:
 
 class Judge(Protocol):
     async def assess(
-        self, *, task_prompt: str, response: str, reference: str | None, criteria: list[str]
+        self, *, task_prompt: str, response: str, reference: str | None, criteria: list[str],
+        threshold: float | None = None,
     ) -> Assessment: ...
 
 
@@ -256,13 +257,14 @@ async def _rubric(spec: dict[str, Any], output: str, ctx: GradeContext) -> Grade
     if ctx.judge is None:
         raise GraderUnavailable("rubric grading needs judge_models in the benchmark config")
     criteria = parse_criteria(spec["criteria"])
+    threshold = float(spec.get("threshold", ctx.judge_threshold))
     assessment = await ctx.judge.assess(
         task_prompt=ctx.task.prompt,
         response=output,
         reference=ctx.task.reference if spec.get("include_reference", True) else None,
         criteria=[text for text, _ in criteria],
+        threshold=threshold,
     )
-    threshold = float(spec.get("threshold", ctx.judge_threshold))
 
     results = []
     for (text, required), by_judge, reason in zip(criteria, assessment.by_judge, assessment.reasons):

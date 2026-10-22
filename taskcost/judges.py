@@ -114,7 +114,12 @@ class ChatJudge:
 
 
 class JudgePanel:
-    """Runs every judge in parallel. A judge that errors is skipped; all failing raises."""
+    """Runs the judges and combines their votes. A judge that errors is skipped; all failing raises.
+
+    With a pass threshold, the first majority of judges (list the cheap ones first) run before the rest:
+    if they all pass every criterion, the majority is already decided and the rest are skipped. Anything
+    less clear-cut runs the whole panel, so failures always get every judge's verdict and reasons.
+    """
 
     def __init__(self, judges: list[DecisionJudge | ChatJudge]):
         if not judges:
@@ -126,17 +131,29 @@ class JudgePanel:
         return [judge.name for judge in self.judges]
 
     async def assess(
-        self, *, task_prompt: str, response: str, reference: str | None, criteria: list[str]
+        self, *, task_prompt: str, response: str, reference: str | None, criteria: list[str],
+        threshold: float | None = None,
     ) -> Assessment:
-        outcomes = await asyncio.gather(
-            *(judge.evaluate(task_prompt, response, reference, criteria) for judge in self.judges),
-            return_exceptions=True,
-        )
-        for outcome in outcomes:
-            if isinstance(outcome, APIError) and outcome.fatal:
-                raise outcome
-        succeeded = [(j, o) for j, o in zip(self.judges, outcomes) if isinstance(o, JudgeVerdicts)]
-        failed = [j.name for j, o in zip(self.judges, outcomes) if not isinstance(o, JudgeVerdicts)]
+        async def run(judges: list[DecisionJudge | ChatJudge]) -> list[Any]:
+            outcomes = await asyncio.gather(
+                *(judge.evaluate(task_prompt, response, reference, criteria) for judge in judges), return_exceptions=True)
+            for outcome in outcomes:
+                if isinstance(outcome, APIError) and outcome.fatal:
+                    raise outcome
+            return outcomes
+
+        majority = len(self.judges) // 2 + 1
+        first, rest = self.judges[:majority], self.judges[majority:]
+        if threshold is None or not rest:
+            judges, outcomes = self.judges, await run(self.judges)
+        else:
+            judges, outcomes = first, await run(first)
+            settled = all(isinstance(o, JudgeVerdicts) and all(p is not None and p >= threshold for p in o.probabilities)
+                          for o in outcomes)
+            if not settled:
+                judges, outcomes = self.judges, outcomes + await run(rest)
+        succeeded = [(j, o) for j, o in zip(judges, outcomes) if isinstance(o, JudgeVerdicts)]
+        failed = [j.name for j, o in zip(judges, outcomes) if not isinstance(o, JudgeVerdicts)]
         if not succeeded:
             raise next(o for o in outcomes if isinstance(o, BaseException))
 

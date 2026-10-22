@@ -133,3 +133,28 @@ def test_contains_all_with_alternatives_and_forbidden():
     spec = {"type": "contains_all", "terms": ["4517", ["7", "seven"]], "forbidden": ["late fee"]}
     assert run(spec, "Invoice 4517 due in seven days").passed
     assert not run(spec, "Invoice 4517 due in seven days plus a late fee").passed
+
+
+def test_panel_skips_the_deciding_judge_only_when_the_majority_already_passed_everything():
+    import asyncio
+
+    from taskcost.judges import JudgePanel, JudgeVerdicts
+
+    class Judge:
+        def __init__(self, name, probabilities):
+            self.name, self.probabilities, self.calls = name, probabilities, 0
+
+        async def evaluate(self, task_prompt, response, reference, criteria):
+            self.calls += 1
+            return JudgeVerdicts(self.probabilities, [""] * len(criteria), 0.01)
+
+    def panel(first, second):
+        judges = [Judge("a", first), Judge("b", second), Judge("c", [1.0, 1.0])]
+        result = asyncio.run(JudgePanel(judges).assess(task_prompt="t", response="r", reference=None,
+                                                       criteria=["x", "y"], threshold=0.8))
+        return result, judges[2].calls
+
+    settled, third = panel([0.9, 0.95], [1.0, 0.85])
+    assert third == 0 and set(settled.by_judge[0]) == {"a", "b"} and settled.cost_egp == 0.02
+    disputed, third = panel([0.9, 0.3], [1.0, 0.85])
+    assert third == 1 and set(disputed.by_judge[1]) == {"a", "b", "c"}

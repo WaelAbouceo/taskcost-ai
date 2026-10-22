@@ -20,7 +20,7 @@ from typing import Any, Protocol, TextIO
 import yaml
 
 from .client import Completion, Decision, ModelInfo
-from .config import BenchmarkConfig, ModelSpec
+from .config import BenchmarkConfig
 from .graders import GradeContext, extract_json, grade
 from .jsonchat import chat_json
 from .judges import build_panel
@@ -407,13 +407,13 @@ async def verify_blueprint(
                 candidates = [
                     c for c in rank_candidates(cards, step["use_case"], config.prefer_open_weights,
                                                config.min_model_pass_rate, residency_ranks(config, cards))
-                    if c.id in catalog and accepted(config, c.id) and (include_frontier or c.tier != "Frontier")
+                    if config.model_spec(c.id).id in catalog and accepted(config, c.id) and (include_frontier or c.tier != "Frontier")
                 ]
                 for card in candidates:
-                    spec = ModelSpec(id=card.id, label=card.id, temperature=config.default_temperature)
+                    spec = config.model_spec(card.id)
                     extra = {"tier": card.tier, "step_id": step["id"], "workflow_id": workflow["id"], "verification": True}
                     outcomes = await asyncio.gather(*(
-                        run_job(run_config, backend, panel, spec, catalog[card.id], task, trial, sink, extra)
+                        run_job(run_config, backend, panel, spec, catalog[spec.id], task, trial, sink, extra)
                         for trial in range(1, trials + 1)
                     ))
                     passed = sum(o.passed for o in outcomes)

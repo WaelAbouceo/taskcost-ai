@@ -289,7 +289,9 @@ def snapshot_age_hours() -> float | None:
 
 
 def residency_of(model_id: str) -> dict[str, Any]:
-    """Where a model may run, from the latest snapshot (before the first check: Egypt-hosted or unverified)."""
+    """Where a model may run, from the latest snapshot (before the first check: Egypt-hosted or unverified).
+    A variant ("model-id@fast") runs where its base model runs."""
+    model_id = model_id.split("@", 1)[0]
     snapshot = load_snapshot()
     if snapshot and model_id in snapshot["models"]:
         return snapshot["models"][model_id]

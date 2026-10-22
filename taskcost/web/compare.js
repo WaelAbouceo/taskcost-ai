@@ -139,6 +139,20 @@ function helperNote(q) {
   return `Your request was analysed ${where} (${esc(used.join(", "))}).`;
 }
 
+// Models the user would have preferred (open source, or closer to them) that lost, and why.
+function whyNotChosen(q, best) {
+  const local = q.sovereignty?.level && q.sovereignty.level !== "open";
+  const preferred = (t) => (local && t.residency && best.residency && t.residency.rank < best.residency.rank)
+    || (q.prefer_open_weights && t.open_weights && !best.open_weights);
+  const passedOver = q.tiers.filter((t) => t !== best && preferred(t));
+  if (!passedOver.length) return "";
+  const reason = (t) => {
+    const [, label, why] = modelStatus(t);
+    return `${t.model}: ${label.replace(/^\S+\s/, "").toLowerCase()}${why ? ` (${why})` : ""}`;
+  };
+  return `<div class="hint">Not chosen: ${passedOver.map((t) => esc(reason(t))).join("; ")}.</div>`;
+}
+
 const fitBadge = (q, t) => (q.sovereignty?.level === "open" || !t.residency ? ""
   : residencyBadge(t.residency.fit, t.residency.locations, q.sovereignty.country_name));
 
@@ -225,10 +239,15 @@ async function renderAnswer(name) {
     <section class="simple">
       <a href="#/" class="back">← New task</a>
       <p class="asked">“${esc(q.request)}”</p>
-      <p class="use-line">${q.use_case_guess ? "We assumed" : "Used as"} <strong>${esc(useName.toLowerCase())}</strong>:
-        ${esc((USE_CASES_SHORT[q.use_case] || ["", ""])[1].toLowerCase())}
-        <span class="hint">Not right? ${Object.keys(USE_CASES_SHORT).filter((u) => u !== q.use_case)
-          .map((u) => `<button type="button" class="link" data-use-case="${esc(u)}">${esc(USE_CASES_SHORT[u][0])}</button>`).join(" · ")}</span></p>
+      <div class="use-switch">
+        <span class="hint">${q.use_case_guess ? "We assumed it's used as" : "Used as"}</span>
+        <div class="segmented small" role="group" aria-label="How will this be used?">
+          ${Object.entries(USE_CASES_SHORT).map(([u, [label]]) => `<button type="button" class="${u === q.use_case ? "active" : ""}"
+            ${u === q.use_case ? "disabled" : `data-use-case="${esc(u)}"`}>${esc(label)}</button>`).join("")}
+        </div>
+      </div>
+      <p class="hint use-hint">${esc((USE_CASES_SHORT[q.use_case] || ["", ""])[1])}
+        ${q.use_case_guess ? "Not right? Pick another: we re-test the same task, so only the speed limit changes." : ""}</p>
       <div id="use-progress"></div>
       ${sovereigntyNotes(q)}
       ${q.test_mode ? `<div class="notice">Test mode: simulated models, not real results.</div>` : ""}
@@ -248,6 +267,7 @@ async function renderAnswer(name) {
           ${q.cheapest_correct && q.cheapest_correct.cost_per_1000_egp < best.cost_per_1000_egp
             ? `<div class="hint">Cheapest correct option: ${esc(q.cheapest_correct.model)} (${q.cheapest_correct.open_weights ? "open source" : "proprietary"}${q.cheapest_correct.residency && q.cheapest_correct.residency.fit !== "in_country" ? `, ${esc(FIT_TEXT[q.cheapest_correct.residency.fit][1].toLowerCase())}` : ""})
                at ${money(q.cheapest_correct.cost_per_1000_egp)} EGP per 1,000 tasks.</div>` : ""}
+          ${whyNotChosen(q, best)}
           ${q.advice?.verdict === "best" ? `<div class="hint">✓ Agent 1 predicted this before testing.</div>` : ""}
         </div>`
         : `<div class="answer bad">

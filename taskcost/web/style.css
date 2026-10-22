@@ -242,8 +242,14 @@ details.options ul { color: var(--mist); }
 .back { display: inline-block; margin-bottom: 14px; text-decoration: none; font-weight: 600; color: var(--mist); }
 .back:hover { color: var(--text); }
 .asked { color: var(--muted); margin: 0 0 6px; font-size: 15px; }
-.use-line { margin: 0 0 16px; color: var(--mist); font-size: 14.5px; }
-.use-line .hint { margin-left: 6px; }
+.use-switch { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 6px; }
+.segmented.small { padding: 3px; flex: 0 1 360px; }
+.segmented.small button { flex: 1; padding: 7px 12px; font-size: 14px; border-radius: 8px; background: transparent;
+  color: var(--muted); border: 0; }
+.segmented.small button:hover:not(:disabled) { color: var(--text); background: var(--hover); opacity: 1; }
+.segmented.small button.active { background: rgba(255, 255, 255, 0.10); color: var(--text); opacity: 1;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12); cursor: default; }
+.use-hint { margin: 0 0 16px; }
 .answer { border-radius: var(--radius); padding: 24px 26px; margin-bottom: 18px; background: rgba(10, 10, 15, 0.7); }
 .answer.good { border: 1px solid var(--accent-line); box-shadow: var(--accent-glow); }
 .answer.bad { border: 1px solid var(--warn-line); background: rgba(245, 158, 11, 0.06); }

@@ -14,14 +14,14 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from .cache import Cache, CachedDecisions
-from .config import BenchmarkConfig, ModelSpec
+from .config import BenchmarkConfig
 from .design import design_simple_task
 from .execute import execute_plan
 from .plan import Plan, build_task
 from .recommender import recommend_hybrid
 from .licenses import is_egypt_hosted, is_open_weights
 from .naming import slug
-from .registry import USE_CASES, registry_from_results
+from .registry import MIN_SHORT_RUNS, USE_CASES, registry_from_results
 from .report import finalize_run
 from .sovereignty import FIT_RANK, LEVELS, accepted, country_name, model_fit, residency_ranks
 from .runner import Backend, load_attempts
@@ -69,7 +69,7 @@ async def quick_compare(
         raise ValueError("Set quick_design_model (or design_model) in benchmark.yaml")
 
     catalog = await backend.list_models()
-    missing = [m for m in [designer_id, *seen] if m not in catalog]
+    missing = [m for m in [designer_id, *(config.model_spec(m).id for m in seen)] if m not in catalog]
     if missing:
         raise ValueError(f"Models not in the catalog: {missing}")
 
@@ -89,7 +89,7 @@ async def quick_compare(
 
     recommendation, registry = await _recommend(config, plan, catalog, backend, use_case, cache, log)
     picked = (recommendation or {}).get("model")
-    if picked and picked not in seen and picked in catalog and accepted(config, picked):
+    if picked and picked not in seen and config.model_spec(picked).id in catalog and accepted(config, picked):
         # Always test Agent 1's own pick, so its prediction can be confirmed or refuted.
         seen[picked] = "Agent 1 pick"
         print(f"Adding Agent 1's pick ({picked}) to the comparison.", file=log)
@@ -98,7 +98,7 @@ async def quick_compare(
         progress("run")
     run_config = replace(
         config,
-        models=tuple(ModelSpec(id=model, label=model, temperature=config.default_temperature) for model in seen),
+        models=tuple(config.model_spec(model) for model in seen),
         trials=max(1, min(trials, 5)),
         max_attempts=1,
     )
@@ -170,7 +170,9 @@ def quick_summary(run_dir: Path) -> dict[str, Any]:
         ))
         cost_per_success = cost / len(passed) if passed else None
         # Speed is judged on the registry's measured slowest-1-in-10 when available, since one run says little.
-        measured_p90 = (registry.get(entry["model"]) or {}).get("latency_p90_s")
+        card = registry.get(entry["model"]) or {}
+        chat_speed = use_case == "chat" and card.get("short_runs", 0) >= MIN_SHORT_RUNS
+        measured_p90 = card.get("latency_p90_short_s") if chat_speed else card.get("latency_p90_s")
         slowest = measured_p90 if measured_p90 is not None else (max(latencies) if latencies else None)
         tiers.append({
             "open_weights": is_open_weights(entry["model"]),
