@@ -176,6 +176,7 @@ def base_record(spec: ModelSpec, task: Task, trial: int, attempt: int, extra: di
         "error_kind": None,
         "request_id": None,
         "criteria": [],
+        "unreviewed": [],
         "truncated": False,
         **(extra or {}),
     }
@@ -235,11 +236,11 @@ async def run_job(
 
         record.update(
             passed=result.passed, score=round(result.score, 4),
-            detail=result.detail, grading_cost_egp=result.cost_egp,
+            detail=result.detail, grading_cost_egp=result.cost_egp, unreviewed=list(result.unreviewed),
             criteria=[
                 {
                     "criterion": c.criterion, "required": c.required, "passed": c.passed,
-                    "probability": round(c.probability, 4), "unanimous": c.unanimous,
+                    "probability": round(c.probability, 4), "unanimous": c.unanimous, "reviewed": c.reviewed,
                     "by_judge": {name: round(p, 4) for name, p in c.by_judge.items()},
                     "reason": c.reason[:300],
                 }

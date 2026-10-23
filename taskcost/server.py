@@ -500,7 +500,7 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
     async def start_anything(
         task: str = Form(...),
         tiers: str = Form(default="[]"),
-        trials: int = Form(default=1),
+        trials: str = Form(default="auto"),
         use_case: str = Form(default="auto"),
         files: list[UploadFile] = File(default=[]),
         helpers: str = Form(default=""),
@@ -529,6 +529,8 @@ def create_app(root: Path, config_path: Path) -> FastAPI:
         if auto:
             guess = size.get("use_case_probabilities") or {}
             use_case, use_case_note = use_case_prior(profile, size.get("use_case", DEFAULT_USE_CASE), guess)
+        # "auto": chatbot tasks are tested 3 times, because speed decides them and one answer says little about it.
+        trials = (3 if use_case == "chat" else 1) if trials in ("", "auto") else max(1, min(int(trials), 5))
         context = design_context(profile)
         personalization = {"context": context, "use_case_note": use_case_note,
                            "profile": {k: profile.get(k) for k in ("domain", "language", "usual_use_case", "monthly_volume")}

@@ -18,7 +18,8 @@ from typing import Any
 from . import usage
 
 MIN_REQUESTS = 2          # below this, nothing is tailored
-PRIOR_SHARE = 0.6         # a use case is "usual" when at least this share of the user's tasks have it
+PRIOR_SHARE = 0.7         # a use case is "usual" when at least this share of the user's tasks have it...
+MIN_USE_CASE_TASKS = 4    # ...and the user has settled at least this many tasks
 UNSURE_BELOW = 0.6        # the guessed use case is unclear below this probability
 DOMAIN_SHARE = 0.4        # the leading industry's share of all industry evidence
 DOMAIN_LABELS = {
@@ -94,7 +95,7 @@ def build_profile(client: str, events: list[dict[str, Any]] | None = None) -> di
         settled[change.get("from_use_case")] -= 1
         settled[change.get("to_use_case")] += 2
     total = sum(v for v in settled.values() if v > 0)
-    if total >= 3:
+    if total >= MIN_USE_CASE_TASKS:
         use_case, count = max(settled.items(), key=lambda item: item[1])
         if count / total >= PRIOR_SHARE:
             profile["usual_use_case"] = use_case

@@ -161,6 +161,23 @@ async def _recommend(
     return rec.to_dict(), registry
 
 
+def speed_verdict(card: dict[str, Any], latencies: list[float], use_case: str) -> dict[str, Any]:
+    """The same rule for every model: with enough earlier answers (MIN_SHORT_RUNS; chatbot-length ones for a
+    chatbot), the slowest 1 in 10 of them decides, because one run says little about the slow answers; otherwise
+    this run's slowest answer decides. Both figures are returned so the page can show them for every model."""
+    chat_speed = use_case == "chat" and card.get("short_runs", 0) >= MIN_SHORT_RUNS
+    p90 = card.get("latency_p90_short_s") if chat_speed else card.get("latency_p90_s")
+    answers = card.get("short_runs", 0) if chat_speed else card.get("runs", 0)
+    if answers < MIN_SHORT_RUNS:
+        p90, answers = None, 0
+    this_run = max(latencies) if latencies else None
+    budget = USE_CASES.get(use_case, USE_CASES["batch"])["max_p90_s"]
+    slowest = p90 if p90 is not None else this_run
+    return {"this_run_s": this_run, "runs": len(latencies), "p90_s": p90, "answers": answers,
+            "basis": "history" if p90 is not None else "this run", "limit_s": budget, "slowest_s": slowest,
+            "fast_enough": budget is None or (slowest is not None and slowest <= budget)}
+
+
 def quick_summary(run_dir: Path) -> dict[str, Any]:
     """Everything the quick-compare page shows, per tier."""
     config = json.loads((run_dir / "config.json").read_text(encoding="utf-8"))
@@ -179,29 +196,32 @@ def quick_summary(run_dir: Path) -> dict[str, Any]:
         runs = sorted((r for r in records if r["model"] == entry["model"]), key=lambda r: r["trial"])
         graded = [r for r in runs if r.get("error_kind") is None]
         passed = [r for r in graded if r["passed"]]
+        # An answer with no failed check but some checks without a verdict is "not reviewed": neither a pass nor a fail.
+        reviewed_fail = lambda r: any(c["required"] and c.get("reviewed", True) and not c["passed"] for c in r.get("criteria", []))
+        unreviewed = [r for r in graded if r.get("unreviewed") and not reviewed_fail(r)]
         cost = sum(r["cost_egp"] for r in runs)
         latencies = [r["latency_s"] for r in runs if r.get("latency_s") is not None]
         failed_checks = list(dict.fromkeys(
-            c["criterion"] for r in graded for c in r.get("criteria", []) if c["required"] and not c["passed"]
+            c["criterion"] for r in graded for c in r.get("criteria", [])
+            if c["required"] and c.get("reviewed", True) and not c["passed"]
         ))
         cost_per_success = cost / len(passed) if passed else None
-        # Speed is judged on the registry's measured slowest-1-in-10 when available, since one run says little.
-        card = registry.get(entry["model"]) or {}
-        chat_speed = use_case == "chat" and card.get("short_runs", 0) >= MIN_SHORT_RUNS
-        measured_p90 = card.get("latency_p90_short_s") if chat_speed else card.get("latency_p90_s")
-        slowest = measured_p90 if measured_p90 is not None else (max(latencies) if latencies else None)
+        speed = speed_verdict(registry.get(entry["model"]) or {}, latencies, use_case)
+        slowest, measured_p90 = speed["slowest_s"], speed["p90_s"]
         tiers.append({
             "open_weights": is_open_weights(entry["model"]),
             "egypt_hosted": is_egypt_hosted(entry["model"]),
             "residency": stored.get(entry["model"]) or model_fit(entry["model"], country),
-            "fast_enough": budget is None or (slowest is not None and slowest <= budget),
+            "fast_enough": speed["fast_enough"],
             "slowest_s": slowest,
             "speed_source": "registry" if measured_p90 is not None else "this run",
+            "speed": {k: v for k, v in speed.items() if k not in ("slowest_s", "fast_enough")},
             "tier": entry["tier"],
             "model": entry["model"],
             "runs": len(runs),
             "passed": len(passed),
             "errors": len(runs) - len(graded),
+            "unreviewed": len(unreviewed),
             "success_rate": len(passed) / len(runs) if runs else 0.0,
             "quality": sum(r["score"] for r in graded) / len(graded) if graded else None,
             "cost_per_answer_egp": cost / len(runs) if runs else None,
@@ -237,6 +257,8 @@ def quick_summary(run_dir: Path) -> dict[str, Any]:
         ran = next((t for t in tiers if t["model"] == advice["model"]), None)
         if ran is None:
             advice["verdict"] = "not_run"
+        elif ran["unreviewed"] and ran["passed"] + ran["unreviewed"] == ran["runs"]:
+            advice["verdict"] = "not_reviewed"
         elif ran["passed"] == ran["runs"] and recommended is not None and recommended["model"] == ran["model"]:
             advice["verdict"] = "best"
         elif ran["passed"] == ran["runs"]:
@@ -267,10 +289,12 @@ def quick_summary(run_dir: Path) -> dict[str, Any]:
         "trials": config.get("trials"),
         "test_mode": bool(config.get("test_mode")),
         "design_cost_egp": (config.get("design") or {}).get("cost_egp"),
+        "size_cost_egp": (config.get("size") or {}).get("cost_egp"),
         "judge_cost_egp": judge_cost,
         "started_at": config.get("started_at"),
         "tiers": tiers,
         "recommended": recommended and {"tier": recommended["tier"], "model": recommended["model"]},
+        "unreviewed_tiers": sum(1 for t in tiers if t["unreviewed"]),
         "cheapest_correct": cheapest and cheapest is not recommended and {
             "tier": cheapest["tier"], "model": cheapest["model"], "cost_per_1000_egp": cheapest["cost_per_1000_egp"],
             "egypt_hosted": cheapest["egypt_hosted"], "open_weights": cheapest["open_weights"],

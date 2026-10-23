@@ -31,7 +31,7 @@ async def execute_plan(
 ) -> Path:
     catalog = await backend.list_models()
     models, judge_infos = resolve_models(config, catalog, needs_judge=True)
-    judge = build_panel(backend, judge_infos)
+    judge = build_panel(backend, judge_infos, fact_check=config.fact_check)
     warn_on_judge_overlap(models, judge_infos, log)
     documents = plan.load_documents()
     ordered = plan.ordered_tasks()

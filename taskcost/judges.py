@@ -7,6 +7,7 @@ return a pass/fail verdict with a reason per criterion. A panel mixes both to re
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -86,24 +87,23 @@ class ChatJudge:
         if reference:
             parts.append(f"## Reference answer\n{reference}")
         parts.append(f"## Criteria\n{numbered}")
-        completion = await self.backend.chat(
-            self.model,
-            [{"role": "system", "content": CHAT_JUDGE_SYSTEM}, {"role": "user", "content": "\n\n".join(parts)}],
-            # Reasoning judges spend hidden tokens before the verdict; a tight cap truncates it.
-            max_tokens=2000 + 150 * len(criteria),
-            temperature=0.0,
-        )
-        cost = completion.cost(self.model)
-
+        messages = [{"role": "system", "content": CHAT_JUDGE_SYSTEM}, {"role": "user", "content": "\n\n".join(parts)}]
+        cost = 0.0
         verdicts: dict[int, dict[str, Any]] = {}
-        try:
-            data = extract_json(completion.text)
-            items = data.get("verdicts", []) if isinstance(data, dict) else data
-            for position, item in enumerate(items, start=1):
-                if isinstance(item, dict):
-                    verdicts[int(item.get("id", position))] = item
-        except (ValueError, TypeError):
-            pass
+        # A reasoning judge can spend its budget thinking and return no verdict (or cut-off JSON): give it room,
+        # and if nothing usable comes back, ask once more with reasoning off before abstaining.
+        for extra in (None, {"reasoning_effort": "none"}):
+            try:
+                completion = await self.backend.chat(self.model, messages, max_tokens=6000 + 200 * len(criteria),
+                                                     temperature=0.0, extra=extra)
+            except APIError:
+                if extra is None:
+                    raise
+                break
+            cost += completion.cost(self.model)
+            verdicts = _parse_verdicts(completion.text)
+            if verdicts:
+                break
         probabilities: list[float | None] = []
         reasons = []
         for i in range(1, len(criteria) + 1):
@@ -111,6 +111,56 @@ class ChatJudge:
             probabilities.append(None if not isinstance(verdict, bool) else float(verdict))
             reasons.append(str(verdicts.get(i, {}).get("reason", "abstained: no verdict returned")))
         return JudgeVerdicts(probabilities, reasons, cost)
+
+
+def _parse_verdicts(text: str) -> dict[int, dict[str, Any]]:
+    verdicts: dict[int, dict[str, Any]] = {}
+    try:
+        data = extract_json(text)
+        items = data.get("verdicts", []) if isinstance(data, dict) else data
+        for position, item in enumerate(items, start=1):
+            if isinstance(item, dict) and isinstance(item.get("pass"), bool):
+                verdicts[int(item.get("id", position))] = item
+    except (ValueError, TypeError):
+        pass
+    return verdicts
+
+
+# Numbers and codes a check names (an order number, an amount, a date, a percentage). Numbers that limit the
+# answer's shape ("at most 3 sentences") are not facts to find in it.
+_FACT = re.compile(r"#?[A-Za-z]{1,6}-?\d[\w-]*\d|\d[\d,.]*\d|\d")
+_SHAPE = re.compile(r"(?:at most|at least|under|over|fewer than|less than|more than|up to|no more than|maximum|minimum)"
+                    r"\s+\d+|\d+\s*(?:sentences?|words?|paragraphs?|bullets?|bullet points?|lines?|characters?|points?|items?)",
+                    re.IGNORECASE)
+
+
+def _norm_fact(value: str) -> str:
+    """Comparable form: no thousands separators, # or %, no trailing decimal zeros ("1,275.00" -> "1275")."""
+    return re.sub(r"\.0+\b", "", re.sub(r"(?<=\d),(?=\d)|[#%]", "", value)).lower().strip()
+
+
+class FactJudge:
+    """A deterministic reviewer: a check that names exact numbers or codes passes only if all of them appear in
+    the answer. It abstains on checks without such facts. Free, and independent of any model, so it backs up
+    small panels (such as Strict mode with a single local reviewer that is also being compared)."""
+
+    name = "fact-check"
+
+    async def evaluate(self, task_prompt: str, response: str, reference: str | None, criteria: list[str]) -> JudgeVerdicts:
+        answer = _norm_fact(response)
+        probabilities: list[float | None] = []
+        reasons: list[str] = []
+        for criterion in criteria:
+            text = _SHAPE.sub(" ", criterion)
+            facts = [f for f in (_norm_fact(m) for m in _FACT.findall(text)) if f]
+            if not facts:
+                probabilities.append(None)
+                reasons.append("")
+                continue
+            missing = [f for f in facts if not re.search(rf"(?<![0-9a-z]){re.escape(f)}(?![0-9a-z])", answer)]
+            probabilities.append(0.0 if missing else 1.0)
+            reasons.append(f"missing {', '.join(missing)}" if missing else "all named numbers and codes found")
+        return JudgeVerdicts(probabilities, reasons, 0.0)
 
 
 class JudgePanel:
@@ -168,7 +218,9 @@ class JudgePanel:
         return Assessment(by_judge, reasons, sum(v.cost_egp for _, v in succeeded), failed)
 
 
-def build_panel(backend: JudgeBackend, models: list[ModelInfo]) -> JudgePanel:
-    return JudgePanel(
-        [DecisionJudge(backend, m) if m.modality == "decision" else ChatJudge(backend, m) for m in models]
-    )
+def build_panel(backend: JudgeBackend, models: list[ModelInfo], fact_check: bool = False) -> JudgePanel:
+    """Model reviewers, plus the deterministic fact check when asked (Strict mode's small local panel)."""
+    judges: list[Any] = [DecisionJudge(backend, m) if m.modality == "decision" else ChatJudge(backend, m) for m in models]
+    if fact_check:
+        judges.append(FactJudge())
+    return JudgePanel(judges)

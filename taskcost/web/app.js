@@ -102,7 +102,9 @@ const fitText = (fit) => (fit ? residencyBadge(fit.fit, fit.locations, "") : "")
 function renderTrace(trace, open = false) {
   if (!trace?.steps?.length) return "";
   const data = trace.data || {};
-  const where = data.total ? ` · your task reached ${data.local} of ${data.total} models in your country or places your law allows` : "";
+  const where = data.total
+    ? ` · your task was sent to ${data.total} model${data.total === 1 ? "" : "s"} (helpers, tested models and reviewers); ${data.local} of them run${data.local === 1 ? "s" : ""} in your country or places your law allows`
+    : "";
   return `<details class="options trace" ${open ? "open" : ""}>
       <summary>How we got this answer <span class="hint">${trace.steps.length} steps · ${secs(trace.seconds)} · ${egp(trace.cost_egp)} EGP${where}</span></summary>
       <ol class="trace-steps">${trace.steps.map((s) => `<li>
@@ -157,7 +159,9 @@ async function route() {
     else if (view === "blueprint" && name) await renderBlueprint(decodeURIComponent(name));
     else if (view === "hosting") await renderHosting();
     else if (view === "insights") await renderInsights();
-    else await renderHome();
+    else if (view === "history") location.replace("#/results");
+    else if (!view) await renderHome();
+    else renderNotFound();
   } catch (error) {
     app.innerHTML = `<div class="notice bad">${esc(error.message)}</div>`;
   }
@@ -165,6 +169,13 @@ async function route() {
 
 window.addEventListener("hashchange", route);
 window.addEventListener("DOMContentLoaded", route);
+
+function renderNotFound() {
+  app.innerHTML = `<section class="simple"><h1>Page not found</h1>
+    <p class="lead">There's no page at <code>${esc(location.hash)}</code>.</p>
+    <p><a href="#/">Compare a task</a> · <a href="#/results">History</a> · <a href="#/hosting">Where models run</a> ·
+      <a href="#/insights">Insights</a></p></section>`;
+}
 
 // ---------- background jobs ----------
 

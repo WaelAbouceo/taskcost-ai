@@ -28,6 +28,7 @@ class CriterionResult:
     by_judge: dict[str, float]
     unanimous: bool
     reason: str = ""
+    reviewed: bool = True  # False when no reviewer returned a verdict: neither a pass nor a fail
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,7 @@ class GradeResult:
     detail: str = ""
     cost_egp: float = 0.0
     criteria: tuple[CriterionResult, ...] = ()
+    unreviewed: tuple[str, ...] = ()  # required checks no reviewer gave a verdict on
 
 
 @dataclass(frozen=True)
@@ -268,7 +270,7 @@ async def _rubric(spec: dict[str, Any], output: str, ctx: GradeContext) -> Grade
 
     results = []
     for (text, required), by_judge, reason in zip(criteria, assessment.by_judge, assessment.reasons):
-        # Judges that abstained are absent from by_judge; if every judge abstained, the criterion fails.
+        # Judges that abstained are absent from by_judge; if every judge abstained, the check is not reviewed.
         votes = [p >= threshold for p in by_judge.values()]
         results.append(
             CriterionResult(
@@ -279,15 +281,20 @@ async def _rubric(spec: dict[str, Any], output: str, ctx: GradeContext) -> Grade
                 by_judge=by_judge,
                 unanimous=len(set(votes)) == 1,
                 reason=reason,
+                reviewed=bool(votes),
             )
         )
 
-    failed = [r for r in results if r.required and not r.passed]
+    failed = [r for r in results if r.required and r.reviewed and not r.passed]
+    unreviewed = tuple(r.criterion for r in results if r.required and not r.reviewed)
     detail = "; ".join(f"failed: {r.criterion[:80]} (p={r.probability:.2f})" for r in failed)
+    if unreviewed:
+        detail = "; ".join(filter(None, [detail, f"not reviewed (no verdict returned): {len(unreviewed)} check(s)"]))
     if assessment.failed_judges:
         detail = "; ".join(filter(None, [detail, f"judges unavailable: {assessment.failed_judges}"]))
-    score = sum(r.probability for r in results) / len(results)
-    return GradeResult(not failed, score, detail, assessment.cost_egp, tuple(results))
+    reviewed = [r for r in results if r.reviewed]
+    score = sum(r.probability for r in reviewed) / len(reviewed) if reviewed else 0.0
+    return GradeResult(not failed and not unreviewed, score, detail, assessment.cost_egp, tuple(results), unreviewed)
 
 
 @grader("llm_judge")
@@ -315,4 +322,5 @@ async def _all_of(spec: dict[str, Any], output: str, ctx: GradeContext) -> Grade
     cost = sum(r.cost_egp for r in results)
     failed = [r.detail for r in results if not r.passed]
     criteria = tuple(c for r in results for c in r.criteria)
-    return GradeResult(not failed and len(results) == total, score, "; ".join(failed), cost, criteria)
+    unreviewed = tuple(u for r in results for u in r.unreviewed)
+    return GradeResult(not failed and len(results) == total, score, "; ".join(failed), cost, criteria, unreviewed)

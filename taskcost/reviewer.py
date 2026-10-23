@@ -242,14 +242,27 @@ def change_effects(events: list[dict[str, Any]], changes: list[dict[str, str]]) 
     return effects
 
 
+MIN_AFTER_COMPARISONS = 5
+MIN_AFTER_PLANS = 3
+
+
+def enough_after(effect: dict[str, Any], key: str) -> bool:
+    """Enough usage since a change to show its effect on this fact (plan facts count plans, others comparisons)."""
+    if key.startswith("blueprint."):
+        return effect.get("blueprints_after", 0) >= MIN_AFTER_PLANS
+    if key.startswith("errors."):
+        return True
+    return effect.get("comparisons_after", 0) >= MIN_AFTER_COMPARISONS
+
+
 def effect_metrics(effects: list[dict[str, Any]]) -> dict[str, Any]:
-    """Facts after each change as citable metrics, keyed "after:<change time>:<metric>"."""
+    """Facts after each change as citable metrics, keyed "after:<change time>:<metric>", only with enough usage."""
     out: dict[str, Any] = {}
     for effect in effects:
         stamp = effect["at"][:16]
         out[f"after:{stamp}:activity.comparisons"] = effect["comparisons_after"]
         for key, values in effect["metrics"].items():
-            if values["after"] is not None:
+            if values["after"] is not None and enough_after(effect, key):
                 out[f"after:{stamp}:{key}"] = values["after"]
     return out
 

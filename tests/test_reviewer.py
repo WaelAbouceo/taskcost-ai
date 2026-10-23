@@ -76,4 +76,7 @@ def test_changes_are_judged_on_usage_before_and_after_them():
     effects = change_effects(events, [{"at": "2026-10-22T12:00:00+00:00", "title": "Fast local chat model"}])
     chat = effects[0]["metrics"]["outcome.chat_proprietary_rate"]
     assert chat == {"before": 1.0, "after": 0.0} and effects[0]["comparisons_after"] == 1  # backfilled events don't count
-    assert effect_metrics(effects)["after:2026-10-22T12:00:outcome.chat_proprietary_rate"] == 0.0
+    key = "after:2026-10-22T12:00:outcome.chat_proprietary_rate"
+    assert key not in effect_metrics(effects)  # one comparison is too few to judge a change
+    more = events + [{**comparison(use_case="chat"), "at": f"2026-10-22T14:0{i}:00+00:00"} for i in range(1, 5)]
+    assert effect_metrics(change_effects(more, [{"at": "2026-10-22T12:00:00+00:00", "title": "x"}]))[key] == 0.0

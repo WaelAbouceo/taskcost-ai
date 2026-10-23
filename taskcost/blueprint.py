@@ -50,13 +50,14 @@ SIZE_QUESTION = {
     "use_case": {
         "type": "choice",
         "instructions": "How will the result of the work in the `request` be used? If the request does not say, "
-                        "choose how this kind of work usually runs in a company. Choose chat only when the request "
-                        "mentions a conversation with someone waiting, such as a chatbot, live chat or messaging app; "
-                        "writing an email, reading documents or summarising is batch unless the request says otherwise.",
+                        "choose how this kind of work usually runs in a company. Choose chat only when someone waits in a "
+                        "live conversation (a chatbot, live chat or messaging app). Handling one customer's or one case's "
+                        "item as part of a process (writing to that customer, routing a ticket, checking a form) is "
+                        "realtime. Bulk work (mailings to many customers, reports, backlogs of documents) is batch.",
         "criteria": {
             "chat": "Answers in a live conversation while a person waits, such as a chatbot, live chat, WhatsApp or an assistant",
-            "realtime": "An application waits for the result before it continues, such as routing items or checking a form as they arrive",
-            "batch": "Runs in the background and is needed within minutes or hours, such as drafting emails, reading documents, summarising or reports",
+            "realtime": "Part of a workflow that waits for it, one case at a time: an email to one customer about their order, routing a ticket, checking a form as it arrives",
+            "batch": "Bulk work in the background, needed within hours: mailings to many customers, reports, processing a backlog of documents",
         },
     },
     "domain": {
@@ -401,7 +402,7 @@ async def verify_blueprint(
     The Frontier tier is skipped unless include_frontier is set, because it costs several EGP per answer.
     """
     sample_model = catalog[config.sample_model or config.blueprint_model or config.design_model]
-    panel = build_panel(backend, [catalog[j] for j in config.judge_models])
+    panel = build_panel(backend, [catalog[j] for j in config.judge_models], fact_check=config.fact_check)
     run_config = replace(config, max_attempts=1)
     steps = [(w, s) for w in blueprint["workflows"] for s in w["steps"] if s["actor"] == "ai"]
     to_run = [(w, s) for w, s in steps if only_steps is None or s["id"] in only_steps]

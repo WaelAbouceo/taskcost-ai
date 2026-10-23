@@ -65,6 +65,7 @@ class BenchmarkConfig:
     country: str = "EG"               # the user's country (ISO code); the web page sends the detected one
     sovereignty: str = "prefer_local"  # open, prefer_local or strict (see sovereignty.py)
     sovereignty_notes: tuple[str, ...] = ()
+    fact_check: bool = False          # add the deterministic fact check to the reviewers (set by Strict mode)
     hosting_model: str | None = None  # reads provider pages for the daily hosting agent
     hosting_refresh_hours: float = 24.0
     review_model: str | None = None   # the log reviewer agent (reviewer.py)
@@ -130,6 +131,7 @@ class BenchmarkConfig:
             "country": self.country,
             "sovereignty": self.sovereignty,
             "sovereignty_notes": list(self.sovereignty_notes),
+            "fact_check": self.fact_check,
             "helper_mode": self.helper_mode,
             "helpers": {name: getattr(self, name) for name in HELPER_FIELDS},
             "min_success_rate": self.min_success_rate,

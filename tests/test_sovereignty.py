@@ -57,7 +57,7 @@ def test_open_uses_the_global_helpers_and_ignores_location(snapshot):
 def test_strict_keeps_everything_local_or_refuses(snapshot):
     cfg = apply_policy(replace(BASE, sovereignty="strict"))
     assert cfg.profiler_model == LOCAL and cfg.judge_models == (LOCAL,)  # the only local reviewer, with a warning
-    assert any("only reviewer" in n for n in cfg.sovereignty_notes)
+    assert any("only model reviewer" in n and "fact check" in n for n in cfg.sovereignty_notes) and cfg.fact_check
     with pytest.raises(ValueError, match="Strict mode"):
         apply_policy(replace(BASE, sovereignty="strict", country="SA"))  # nothing runs in Saudi Arabia
 

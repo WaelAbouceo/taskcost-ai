@@ -101,7 +101,7 @@ def test_result_explains_every_step_with_models_time_and_cost(tmp_path):
         "judge_models": ["j1", "j2", "j3"], "timeline": {"run_s": 4.0},
     }
     tiers = [{"model": "a", "latency_s": 1.2, "cost_per_answer_egp": 0.01, "runs": 1, "passed": 1, "fast_enough": True}]
-    records = [{"cost_egp": 0.01, "grading_cost_egp": 0.004,
+    records = [{"cost_egp": 0.01, "grading_cost_egp": 0.004, "passed": True,
                 "criteria": [{"by_judge": {"j1": 1.0, "j2": 0.9}}]}]
     trace = quick_trace(config, tiers, records, {"model": "a"})
     titles = [s["title"] for s in trace["steps"]]
@@ -110,4 +110,6 @@ def test_result_explains_every_step_with_models_time_and_cost(tmp_path):
     reviewed = next(s for s in trace["steps"] if s["title"].startswith("Reviewed"))
     assert "last one was skipped" in reviewed["detail"] and [i["model"] for i in reviewed["items"]] == ["j1", "j2", "j3"]
     assert trace["seconds"] == 10.0 and trace["cost_egp"] == pytest.approx(0.094)
-    assert trace["data"]["total"] == 3 + 1 + 3  # understanding, test writing, Agent 1; the tested model; reviewers
+    assert trace["data"] == {"local": 0, "total": 5}  # distinct models: the helper, the tested model, three reviewers
+    assert "a chatbot must answer" in trace["steps"][4]["detail"] and "a a " not in str(trace)
+    assert trace["steps"][4]["title"] == "Tested 1 model on the same task"

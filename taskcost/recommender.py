@@ -142,11 +142,13 @@ async def recommend_hybrid(
         strongest = max(preferred, key=lambda c: (c.hard_pass_rate if c.hard_pass_rate is not None else c.pass_rate,
                                                   c.pass_rate, -c.cost_per_answer_egp))
         chosen = strongest.id
-        note = (f"Agent 1 judged the task hard (p={hard:.2f}), so the most reliable {kind}model that is fast enough was chosen."
+        odds = f"it put the chance that a small model gets it wrong at {hard:.0%}"
+        note = (f"Agent 1 judged the task hard ({odds}), so the most reliable {kind}model that is fast enough was chosen."
                 if strongest is not preferred[0] else
-                f"Agent 1 judged the task hard (p={hard:.2f}); the cheapest {kind}model is also the most reliable fast-enough one.")
+                f"Agent 1 judged the task hard ({odds}); the cheapest {kind}model is also the most reliable fast-enough one.")
     else:
-        chosen, note = preferred[0].id, f"Agent 1 judged a small model will do (p={hard:.2f}): the cheapest reliable {kind}model."
+        chosen, note = preferred[0].id, (f"Agent 1 judged a small model will do (it put the chance that a small model gets "
+                                         f"it wrong at {hard:.0%}): the cheapest reliable {kind}model.")
     if chosen and prefer_open and not cards[chosen].open_weights:
         note += " No open-source model is fast and reliable enough here, so a proprietary model is the fallback."
     elif chosen and residency and residency.get(chosen, 9) > 0 and any(r == 0 for r in residency.values()):

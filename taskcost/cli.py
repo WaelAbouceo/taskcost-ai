@@ -355,6 +355,72 @@ async def _cmd_hosting(args: argparse.Namespace) -> int:
     return 0
 
 
+async def _cmd_probe(args: argparse.Namespace) -> int:
+    """Testing agent: sample requests people would budget and record how this system prices them."""
+    import random
+
+    from .client import APIError
+    from .tester import CASES, format_run, parse_scopes, run_probe
+
+    if args.list:
+        current = None
+        for case in CASES:
+            if case["scope"] != current:
+                current = case["scope"]
+                print(f"\n{current}")
+            print(f"  {case['id']:4} {case['request']}")
+        print(f"\n{len(CASES)} requests.")
+        return 0
+    if args.count < 1 or args.rounds < 1:
+        print("count and rounds must be at least 1.", file=sys.stderr)
+        return 2
+    try:
+        scopes = parse_scopes(args.scope)
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+
+    from .cache import Cache, CachedDecisions
+    from .registry import registry_from_results
+
+    config = load_config(args.config)
+    seed = args.seed if args.seed is not None else random.SystemRandom().randrange(1_000_000_000)
+    print(f"Testing agent, seed {seed}, depth {args.depth}, {args.count} per round, {args.rounds} round(s).",
+          file=sys.stderr)
+    client = _client(600 if args.depth == "budget" else max(config.timeout_s, 180))
+    try:
+        catalog = await client.list_models()
+        profiler_id = config.profiler_model or ""
+        if profiler_id not in catalog:
+            print("Set profiler_model in benchmark.yaml to a model in the catalog.", file=sys.stderr)
+            return 2
+        designer, cards = None, None
+        if args.depth == "budget":
+            designer_id = config.blueprint_model or config.design_model or ""
+            if designer_id not in catalog:
+                print("Set blueprint_model in benchmark.yaml to a model in the catalog.", file=sys.stderr)
+                return 2
+            designer = catalog[designer_id]
+            cards, _ = registry_from_results(config.output_path)
+        decider = CachedDecisions(client, Cache(config.cache_path),
+                                  0 if args.fresh else config.cache_decisions_hours * 3600)
+        try:
+            result = await run_probe(
+                decider, jev=catalog[profiler_id], designer=designer, cards=cards, config=config,
+                count=args.count, rounds=args.rounds, scopes=scopes, depth=args.depth, seed=seed,
+                out_dir=config.output_path, concurrency=config.concurrency)
+        except ValueError as exc:
+            print(exc, file=sys.stderr)
+            return 2
+        except APIError as exc:
+            print(f"Stopped: {exc}", file=sys.stderr)
+            return 2
+    finally:
+        await client.aclose()
+    print(format_run(result))
+    return 0
+
+
 async def _cmd_review(args: argparse.Namespace) -> int:
     """Run the log reviewer now: usage facts, flagged signals and recommended enhancements."""
     from .reviewer import review_usage
@@ -491,6 +557,21 @@ def main(argv: list[str] | None = None) -> int:
     review.add_argument("--days", type=float, help="How much of the usage log to read (default: review_days)")
     review.add_argument("--config", default="benchmark.yaml")
     review.set_defaults(handler=_cmd_review)
+
+    probe = sub.add_parser(
+        "probe",
+        help="Testing agent: random requests people would budget (task, workflow, project, system) and what comes back",
+    )
+    probe.add_argument("--count", type=int, default=8, help="Requests per round, spread across the scopes (default: 8)")
+    probe.add_argument("--rounds", type=int, default=1, help="Keep drawing new requests for this many rounds")
+    probe.add_argument("--scope", default="task,workflow,project,system", help="Comma-separated scopes to sample")
+    probe.add_argument("--depth", choices=["size", "budget"], default="size",
+                       help="size: how the request was read. budget: also the cost the product would show")
+    probe.add_argument("--seed", type=int, help="Repeat a draw. Default: a new random seed, printed with the results")
+    probe.add_argument("--fresh", action="store_true", help="Ask again instead of using cached decisions")
+    probe.add_argument("--list", action="store_true", help="Print the request catalog and exit")
+    probe.add_argument("--config", default="benchmark.yaml")
+    probe.set_defaults(handler=_cmd_probe)
 
     ui = sub.add_parser("ui", help="Start the web interface")
     ui.add_argument("--config", default="benchmark.yaml")

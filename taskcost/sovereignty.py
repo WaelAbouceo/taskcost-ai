@@ -103,11 +103,14 @@ def apply_policy(config: BenchmarkConfig, helpers: str = "") -> BenchmarkConfig:
             kept = sorted(m for m in helper_models if fit(residency_of(m), config.country) in ACCEPTED)[:1]
             if not kept:
                 raise ValueError(f"Strict mode: no reviewer runs in {country} or a place your law allows.")
-            notes.append(f"Strict mode: the only reviewer is {kept[0]}, because no other reviewer runs in {country}. "
-                         "It is also one of the compared models, so its grades may favour its own answer.")
+            notes.append(f"Strict mode: the only model reviewer is {kept[0]}, because no other reviewer runs in {country}. "
+                         "It is also one of the compared models, so a code-based fact check (exact numbers, dates and "
+                         "codes) reviews every answer too.")
         judges = kept
+        config = replace(config, fact_check=len(judges) < 3)
     elif config.sovereignty == "prefer_local":
         abroad = [j for j in judges if fit(residency_of(j), config.country) not in ACCEPTED]
         if abroad:
             notes.append(f"The reviewers ({', '.join(abroad)}) run outside {country}; choose Strict to keep them local.")
-    return replace(config, judge_models=tuple(judges), sovereignty_notes=tuple(notes))
+    return replace(config, judge_models=tuple(judges), sovereignty_notes=tuple(notes),
+                   fact_check=config.fact_check if config.sovereignty == "strict" else False)

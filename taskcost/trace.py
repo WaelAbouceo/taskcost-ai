@@ -42,9 +42,12 @@ def _sovereignty_step(policy: dict[str, Any], helpers: dict[str, Any] | None, ju
 
 
 def data_locations(steps: list[dict[str, Any]]) -> dict[str, int]:
-    """How many steps sent your request to a model in your country (or a place your law allows), and how many didn't."""
-    fits = [s["fit"]["fit"] for s in steps if s.get("fit")] + [i["fit"]["fit"] for s in steps for i in s["items"] if i.get("fit")]
-    return {"local": sum(f in ("in_country", "allowed") for f in fits), "total": len(fits)}
+    """The distinct models your task was sent to (helpers, tested models, reviewers), and how many of them run in
+    your country or a place your law allows. A variant counts with its base model; the fact check isn't a model."""
+    fits: dict[str, str] = {}
+    for item in [s for s in steps if s.get("fit")] + [i for s in steps for i in s["items"] if i.get("fit")]:
+        fits[item["model"].split("@", 1)[0]] = item["fit"]["fit"]
+    return {"local": sum(f in ("in_country", "allowed") for f in fits.values()), "total": len(fits)}
 
 
 def quick_trace(config: dict[str, Any], tiers: list[dict[str, Any]], records: list[dict[str, Any]],
@@ -86,26 +89,37 @@ def quick_trace(config: dict[str, Any], tiers: list[dict[str, Any]], records: li
               "detail": ("passed" if t["runs"] and t["passed"] == t["runs"] else f"failed {t['runs'] - t['passed']} of {t['runs']}")
                         + ("" if t["fast_enough"] else ", too slow")} for t in tiers]
     trials = config.get("trials") or 1
-    steps.append(_step(f"Tested {len(tiers)} models on the same task",
+    steps.append(_step(f"Tested {len(tiers)} model{'s' if len(tiers) != 1 else ''} on the same task",
                        f"Each model answered {'once' if trials == 1 else f'{trials} times'}, all at the same time"
-                       + (f"; a {USE_NAMES.get(config.get('use_case'))} must answer within {budget:g} s." if budget else "."),
+                       + (f"; {USE_NAMES.get(config.get('use_case'))} must answer within {budget:g} s." if budget else "."),
                        seconds=(config.get("timeline") or {}).get("run_s"),
                        cost=sum(r["cost_egp"] for r in records), items=items))
-    judges = config.get("judge_models") or []
+    judges = list(config.get("judge_models") or []) + (["fact-check"] if config.get("fact_check") else [])
     graded = [r for r in records if r.get("criteria")]
-    settled = sum(1 for r in graded if len({j for c in r["criteria"] for j in c.get("by_judge", {})}) < len(judges))
-    steps.append(_step(f"Reviewed {len(graded)} answers against {len((graded[0]['criteria']) if graded else [])} checks",
-                       f"{len(judges)} reviewers vote on each check; a check passes on a majority."
-                       + (f" For {settled} answers the first {len(judges) // 2 + 1} reviewers already agreed everything passed, "
-                          "so the last one was skipped to save cost." if settled else ""),
+    majority = len(judges) // 2 + 1
+
+    def settled_early(r: dict[str, Any]) -> bool:
+        voters = [set(c.get("by_judge", {})) for c in r["criteria"]]
+        return len(judges) > majority and all(v and len(v) == majority for v in voters) and r.get("passed")
+
+    settled = sum(1 for r in graded if settled_early(r))
+    unreviewed = sum(1 for r in graded if r.get("unreviewed"))
+    n_checks = len(graded[0]["criteria"]) if graded else 0
+    steps.append(_step(f"Reviewed {len(graded)} answer{'s' if len(graded) != 1 else ''} against {n_checks} check{'s' if n_checks != 1 else ''}",
+                       (f"{len(judges)} reviewers vote on each check; a check passes on a majority."
+                        if len(judges) > 1 else "One reviewer gives a verdict on each check.")
+                       + (f" For {settled} answer{'s' if settled != 1 else ''} the first {majority} reviewers already agreed "
+                          "everything passed, so the last one was skipped to save cost." if settled else "")
+                       + (f" For {unreviewed} answer{'s' if unreviewed != 1 else ''} some checks got no verdict, so they are "
+                          "shown as not reviewed rather than failed." if unreviewed else ""),
                        cost=sum(r.get("grading_cost_egp", 0.0) for r in records),
                        items=[{"model": j, "fit": model_fit(j, country), "seconds": None, "cost_egp": None, "detail": "reviewer"}
                               for j in judges]))
     rule = ("closest to you first, then " if config.get("sovereignty", "open") != "open" else "") + \
            ("open source before proprietary, then " if config.get("prefer_open_weights", True) else "") + "the cheapest"
     steps.append(_step("Chose the recommendation",
-                       (f"{recommended['model']}: " if recommended else "No model qualified. ")
-                       + f"among the models that passed every check and were fast enough, we pick {rule}."))
+                       (f"{recommended['model']}: among" if recommended else "No model qualified. Among")
+                       + f" the models that passed every reviewed check and were fast enough, we pick {rule}."))
     total_s = sum(s["seconds"] or 0 for s in steps)
     total_cost = sum(s["cost_egp"] or 0 for s in steps)
     return {"steps": steps, "seconds": round(total_s, 1), "cost_egp": round(total_cost, 4), "data": data_locations(steps)}

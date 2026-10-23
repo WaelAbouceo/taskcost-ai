@@ -39,7 +39,7 @@ async function renderHome() {
         You choose how close to home your data must stay.</p>
       </div>
       ${cfg.has_key ? "" : `<div class="notice bad">LLM_API_KEY is not set, so comparisons can't run.</div>`}
-      <form id="quick">
+      <form id="quick" novalidate>
         <textarea name="task" rows="3" required placeholder="e.g. Write an email to a customer about a delayed order"></textarea>
         <div class="examples">Try:
           ${EXAMPLES.map(([label, text]) => `<button type="button" class="link" data-example="${esc(text)}">${esc(label)}</button>`).join(" · ")}
@@ -62,7 +62,8 @@ async function renderHome() {
           </div>
           <datalist id="catalog">${cfg.catalog.map((id) => `<option value="${esc(id)}">`).join("")}</datalist>
           <label class="check"><input type="checkbox" name="reliable" ${profile.prefers_reliability ? "checked" : ""}>
-            Test each model 3 times (slower, more reliable)${profile.prefers_reliability ? ` <span class="hint">· you usually do</span>` : ""}</label>
+            Test each model 3 times (slower, more reliable)${profile.prefers_reliability ? ` <span class="hint">· you usually do</span>` : ""}
+            <span class="hint">· chatbot tasks are always tested 3 times, because speed decides them</span></label>
         </details>
       </form>
 
@@ -98,6 +99,12 @@ async function renderHome() {
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (!form.task.value.trim()) {
+      document.getElementById("quick-progress").innerHTML =
+        `<div class="notice">Describe a task first, for example “Write an email to a customer about a delayed order”, or pick one of the examples.</div>`;
+      form.task.focus();
+      return;
+    }
     const tiers = [...form.querySelectorAll(".tier-model")]
       .map((input) => ({ tier: input.dataset.tier, model: input.value.trim() }))
       .filter((t) => t.model);
@@ -105,7 +112,7 @@ async function renderHome() {
     data.set("task", form.task.value);
     data.set("use_case", "auto");
     data.set("tiers", JSON.stringify(tiers));
-    data.set("trials", form.reliable.checked ? "3" : "1");
+    data.set("trials", form.reliable.checked ? "3" : "auto");
     data.set("country", form.country.value);
     data.set("sovereignty", form.sovereignty.value);
     data.set("client", clientId());
@@ -313,13 +320,29 @@ async function startComparison(data, modelCount, button, box, endpoint = "/api/s
 
 // The blueprint page (workflows and projects) lives in blueprint.js.
 
+// This run's time, and the slowest-1-in-10 figure that decides speed when enough earlier answers exist.
+function speedText(t) {
+  const s = t.speed || {};
+  const now = s.this_run_s == null ? "" : `${s.this_run_s.toFixed(1)} s ${s.runs > 1 ? `slowest of ${s.runs} answers` : "this run"}`;
+  if (s.basis === "history") return `${now} · 1 in 10 over ${s.p90_s.toFixed(1)} s (from ${s.answers} earlier answers)`;
+  return `${now}${s.runs <= 1 ? " · measured once, too few answers to know the slow ones" : ""}`;
+}
+
 function modelStatus(t) {
   if (t.errors && !t.passed) return ["bad", "✗ Error", "The model returned an error."];
+  if (t.unreviewed && t.passed + t.unreviewed === t.runs) {
+    return ["muted", "? Not reviewed", "The reviewer gave no verdict on some checks, so this answer is neither passed nor failed."];
+  }
   if (t.passed < t.runs) {
     const missed = t.failed_checks[0] ? `Missed: ${t.failed_checks[0]}${t.failed_checks.length > 1 ? ` (+${t.failed_checks.length - 1} more)` : ""}` : "";
     return ["bad", t.runs > 1 ? `✗ Failed ${t.runs - t.passed} of ${t.runs}` : "✗ Failed", missed];
   }
-  if (!t.fast_enough) return ["warn", "⏱ Too slow", `1 in 10 answers takes over ${t.slowest_s?.toFixed(1)} s`];
+  if (!t.fast_enough) {
+    const s = t.speed || {};
+    return ["warn", s.basis === "history" ? "⏱ Usually too slow" : "⏱ Too slow",
+      s.basis === "history" ? `1 in 10 answers over ${s.p90_s.toFixed(1)} s (from ${s.answers} earlier answers), above the ${s.limit_s} s limit`
+        : `${s.this_run_s?.toFixed(1)} s, above the ${s.limit_s} s limit`];
+  }
   return ["good", "✓ Passed", ""];
 }
 
@@ -367,18 +390,26 @@ async function renderAnswer(name) {
           ${whyNotChosen(q, best)}
           ${q.advice?.verdict === "best" ? `<div class="hint">✓ Agent 1 predicted this before testing.</div>` : ""}
         </div>`
+        : q.unreviewed_tiers ? `<div class="answer bad">
+          <div class="label">Not fully reviewed</div>
+          <div>The reviewer gave no verdict on some checks for ${q.unreviewed_tiers} model${q.unreviewed_tiers === 1 ? "" : "s"},
+            so we can't say whether they did the task right, and we don't pick a winner on unreviewed checks.
+            Run it again to get a full review.</div>
+        </div>`
         : `<div class="answer bad">
           <div class="label">No clear winner</div>
           <div>No model both did the task right and was fast enough for ${esc(useName.toLowerCase())} use. Tap a model below to see why.</div>
         </div>`}
 
       <table class="models">
-        <tr><th>Model</th><th>Result</th><th class="num">${q.recurring === false ? "EGP for this task" : "EGP per 1,000 tasks"}</th></tr>
+        <tr><th>Model</th><th>Result</th><th>Speed${q.latency_budget_s ? ` (limit ${q.latency_budget_s} s)` : ""}</th>
+          <th class="num">${q.recurring === false ? "EGP for this task" : "EGP per 1,000 tasks"}</th></tr>
         ${q.tiers.map((t, i) => {
           const [cls, label, why] = modelStatus(t);
           return `<tr data-answer="${i}" class="${best === t ? "best" : ""}">
             <td><strong>${esc(t.tier)}</strong> ${sourceBadge(t.open_weights)} ${fitBadge(q, t)}<div class="hint">${esc(t.model)}</div></td>
             <td><span class="badge ${cls}">${esc(label)}</span>${why ? `<div class="hint">${esc(why)}</div>` : ""}</td>
+            <td class="hint">${esc(speedText(t))}</td>
             <td class="num">${money(q.recurring === false ? t.cost_per_success_egp : t.cost_per_1000_egp)}</td></tr>`;
         }).join("")}
       </table>
@@ -395,7 +426,8 @@ async function renderAnswer(name) {
         <ul>${q.criteria.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>
         ${q.advice ? `<p class="hint">Agent 1's prediction: ${esc(q.advice.model || "none")}. ${esc(q.advice.note)}</p>` : ""}
         <p class="hint">Each model answered ${q.trials > 1 ? `${q.trials} times` : "once"}; an independent panel of AI reviewers checked every answer.
-          Checking cost ${egp(q.judge_cost_egp)} EGP and understanding the task ${egp(q.design_cost_egp)} EGP, not included above.
+          Reviewing cost ${egp(q.judge_cost_egp)} EGP, understanding your request ${egp(q.size_cost_egp)} EGP and writing the test task
+          ${egp(q.design_cost_egp)} EGP, not included above.
           Tested ${esc(timeAgo(q.started_at))}. ${helperNote(q)}</p>
         <button type="button" class="secondary" id="run-again">Run again</button>
         <div id="rerun-progress"></div>

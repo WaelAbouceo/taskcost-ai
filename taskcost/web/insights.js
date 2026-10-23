@@ -45,14 +45,17 @@ function changesTable(changes) {
     <div class="table-wrap"><table>
       <tr><th>Change</th><th>Before → after</th></tr>
       ${changes.map((c) => {
-        const rows = Object.entries(c.metrics).filter(([, v]) => v.after != null);
+        // Only facts with enough usage since the change (5 comparisons, or 3 plans for plan facts).
+        const enough = (key) => key.startsWith("blueprint.") ? (c.blueprints_after || 0) >= 3
+          : key.startsWith("errors.") || c.comparisons_after >= 5;
+        const rows = Object.entries(c.metrics).filter(([key, v]) => v.after != null && enough(key));
         const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
         const since = c.comparisons_after + (c.blueprints_after || 0);
         return `<tr><td><strong>${esc(c.title)}</strong><div class="hint">${esc(timeAgo(c.at))} ·
             ${plural(c.comparisons_after, "comparison")} and ${plural(c.blueprints_after || 0, "plan")} since${since < 5 ? " (too few to tell yet)" : ""}</div></td>
           <td>${rows.length ? rows.map(([key, v]) => `<div>${esc(EFFECT_LABELS[key] || key)}:
             ${v.before == null ? "—" : metricValue(key, v.before)} → <strong>${metricValue(key, v.after)}</strong></div>`).join("")
-            : `<span class="hint">No usage since this change yet.</span>`}</td></tr>`;
+            : `<span class="hint">Too few comparisons or plans since this change to tell yet.</span>`}</td></tr>`;
       }).join("")}
     </table></div>`;
 }

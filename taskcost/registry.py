@@ -90,6 +90,7 @@ def build_registry(records: list[dict[str, Any]], hard_tasks: set[str] | frozens
         # Reliability comes from the reviewed task library. Plan measurements use one-off generated tests, some of
         # them flawed (every model fails them), so they add speed and cost data but don't lower a model's record.
         graded = [r for r in runs if not r.get("verification")] or runs
+        graded = [r for r in graded if not r.get("unreviewed")] or graded  # no verdict is not evidence either way
         cards[model] = ModelCard(
             id=model,
             tier=str(runs[0].get("tier", "")),
@@ -128,7 +129,7 @@ def task_results(records: list[dict[str, Any]]) -> dict[tuple[str, str], dict[st
     """Per (model, task): runs, passes and mean cost, for working out the right answer."""
     results: dict[tuple[str, str], dict[str, float]] = defaultdict(lambda: {"runs": 0, "passed": 0, "cost": 0.0})
     for r in records:
-        if r.get("error_kind") is None:
+        if r.get("error_kind") is None and not r.get("unreviewed"):
             entry = results[(r["model"], r["task_id"])]
             entry["runs"] += 1
             entry["passed"] += int(r["passed"])
